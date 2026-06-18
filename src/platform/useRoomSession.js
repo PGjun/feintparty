@@ -2,8 +2,53 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { getGame } from '../games/registry.js';
 import { HostPeerManager, GuestPeerManager } from './peerNetwork.js';
+import { formatP2pStatus } from './p2pStatus.js';
 import { appendMessage, mergeEngineRoom } from './roomState.js';
+import { formatToastMessage } from './toast.js';
 import { setUrlParams } from './url.js';
+
+const SESSION_KEY = 'feintparty-session';
+const PEER_GRACE_MS = 60_000;
+
+function saveSession(code, name) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ code, name, active: true }));
+}
+
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+
+function readSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function syncP2pStatus(setP2pStatus, hostPeersRef, guestPeerRef) {
+  if (hostPeersRef.current) {
+    setP2pStatus(formatP2pStatus(hostPeersRef.current.getStatus()));
+  } else if (guestPeerRef.current) {
+    setP2pStatus(formatP2pStatus(guestPeerRef.current.getStatus()));
+  } else {
+    setP2pStatus(null);
+  }
+}
+
+function attachPeerStatusHandlers(hostPeersRef, guestPeerRef, setP2pStatus) {
+  const update = () => syncP2pStatus(setP2pStatus, hostPeersRef, guestPeerRef);
+
+  if (hostPeersRef.current) {
+    hostPeersRef.current.onStatusChange = update;
+    update();
+  }
+  if (guestPeerRef.current) {
+    guestPeerRef.current.onStatusChange = update;
+    update();
+  }
+}
 
 export function useRoomSession() {
   const [room, setRoom] = useState(null);
@@ -11,8 +56,9 @@ export function useRoomSession() {
   const [isHost, setIsHost] = useState(false);
   const [myName, setMyName] = useState('');
   const [myId, setMyId] = useState(null);
-  const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
   const [p2pStatus, setP2pStatus] = useState(null);
+  const [signalingStatus, setSignalingStatus] = useState(null);
 
   const socketRef = useRef(null);
   const hostPeersRef = useRef(null);
@@ -20,16 +66,49 @@ export function useRoomSession() {
   const gameEngineRef = useRef(null);
   const canvasRef = useRef(null);
   const lobbyPlayersRef = useRef([]);
+  const engineBackupRef = useRef(null);
+  const pendingRemovalsRef = useRef(new Map());
   const isHostRef = useRef(false);
   const myNameRef = useRef('');
   const roomCodeRef = useRef(null);
   const gameIdRef = useRef(null);
+  const intentionalLeaveRef = useRef(false);
+  const toastTimerRef = useRef(null);
+  const userActionRef = useRef(null);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast(null);
+  }, []);
+
+  const showToast = useCallback(
+    (message) => {
+      dismissToast();
+      setToast(formatToastMessage(message));
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, 3200);
+    },
+    [dismissToast]
+  );
+
+  const clearPendingRemovals = useCallback(() => {
+    for (const timer of pendingRemovalsRef.current.values()) {
+      clearTimeout(timer);
+    }
+    pendingRemovalsRef.current.clear();
+  }, []);
 
   const teardownPeers = useCallback(() => {
     if (guestPeerRef.current) {
       guestPeerRef.current.onDisconnected = null;
       guestPeerRef.current.onConnected = null;
       guestPeerRef.current.onMessage = null;
+      guestPeerRef.current.onStatusChange = null;
       guestPeerRef.current.destroy();
       guestPeerRef.current = null;
     }
@@ -37,9 +116,11 @@ export function useRoomSession() {
       hostPeersRef.current.onPeerDisconnected = null;
       hostPeersRef.current.onPeerConnected = null;
       hostPeersRef.current.onMessage = null;
+      hostPeersRef.current.onStatusChange = null;
       hostPeersRef.current.destroy();
       hostPeersRef.current = null;
     }
+    setP2pStatus(null);
   }, []);
 
   const activeGame = room?.gameId ? getGame(room.gameId) : null;
@@ -72,6 +153,28 @@ export function useRoomSession() {
     [activeGame, sessionCtx]
   );
 
+  const schedulePlayerRemoval = useCallback((socketId) => {
+    if (pendingRemovalsRef.current.has(socketId)) {
+      clearTimeout(pendingRemovalsRef.current.get(socketId));
+    }
+
+    const timer = setTimeout(() => {
+      pendingRemovalsRef.current.delete(socketId);
+      lobbyPlayersRef.current = lobbyPlayersRef.current.filter((p) => p.id !== socketId);
+      gameEngineRef.current?.setPlayers(lobbyPlayersRef.current);
+    }, PEER_GRACE_MS);
+
+    pendingRemovalsRef.current.set(socketId, timer);
+  }, []);
+
+  const cancelPlayerRemoval = useCallback((socketId) => {
+    const timer = pendingRemovalsRef.current.get(socketId);
+    if (timer) {
+      clearTimeout(timer);
+      pendingRemovalsRef.current.delete(socketId);
+    }
+  }, []);
+
   const handleHostMessage = useCallback((guestSocketId, msg) => {
     if (msg.type === 'chat' && !gameEngineRef.current) {
       const player = lobbyPlayersRef.current.find((p) => p.id === guestSocketId);
@@ -102,7 +205,10 @@ export function useRoomSession() {
   }, []);
 
   const handleGuestMessage = useCallback((msg) => {
-    setP2pStatus(null);
+    if (msg.type === 'engine-backup') {
+      engineBackupRef.current = msg.backup;
+      return;
+    }
 
     if (msg.type === 'chat-sync') {
       setRoom((prev) =>
@@ -115,14 +221,19 @@ export function useRoomSession() {
     if (!game) return;
 
     game.handleGuestMessage(msg, {
-      setP2pStatus,
       setRoom,
       canvasRef,
     });
   }, []);
 
-  const initHostEngine = useCallback((game, code, initialMessages = []) => {
-    if (!hostPeersRef.current || gameEngineRef.current) return;
+  const initHostEngine = useCallback((game, code, initialMessages = [], options = {}) => {
+    const { backup = null } = options;
+    if (!hostPeersRef.current) return;
+
+    if (gameEngineRef.current) {
+      gameEngineRef.current.destroy();
+      gameEngineRef.current = null;
+    }
 
     const peers = hostPeersRef.current;
     const engine = game.createEngine(
@@ -136,13 +247,21 @@ export function useRoomSession() {
         socketRef.current?.emit('game-finished', { code });
       }
     );
+
     engine.setCode(code);
-    if (initialMessages.length) {
-      engine.setInitialMessages(initialMessages);
+
+    if (backup && engine.importState) {
+      engine.importState(backup);
+      engine.setPlayers(lobbyPlayersRef.current);
+    } else {
+      if (initialMessages.length) {
+        engine.setInitialMessages(initialMessages);
+      }
+      engine.setPlayers(lobbyPlayersRef.current);
+      game.onHostEngineReady?.(engine);
     }
-    engine.setPlayers(lobbyPlayersRef.current);
+
     gameEngineRef.current = engine;
-    game.onHostEngineReady?.(engine);
   }, []);
 
   const setupHostPeers = useCallback(
@@ -152,13 +271,14 @@ export function useRoomSession() {
 
       peers.onMessage = (guestId, msg) => handleHostMessage(guestId, msg);
       peers.onPeerConnected = () => {
-        setP2pStatus(null);
         gameEngineRef.current?.setPlayers(lobbyPlayersRef.current);
+        syncP2pStatus(setP2pStatus, hostPeersRef, guestPeerRef);
       };
       peers.onPeerDisconnected = (guestId) => {
-        lobbyPlayersRef.current = lobbyPlayersRef.current.filter((p) => p.id !== guestId);
-        gameEngineRef.current?.setPlayers(lobbyPlayersRef.current);
+        schedulePlayerRemoval(guestId);
       };
+
+      attachPeerStatusHandlers(hostPeersRef, guestPeerRef, setP2pStatus);
 
       data.players.forEach((p) => {
         if (p.id !== socket.id) peers.connectGuest(p.id);
@@ -166,10 +286,14 @@ export function useRoomSession() {
 
       if (data.gameId) {
         const game = getGame(data.gameId);
-        if (game) initHostEngine(game, data.code, []);
+        if (game) {
+          initHostEngine(game, data.code, [], {
+            backup: engineBackupRef.current,
+          });
+        }
       }
     },
-    [handleHostMessage, initHostEngine]
+    [handleHostMessage, initHostEngine, schedulePlayerRemoval]
   );
 
   const setupGuestPeers = useCallback(
@@ -177,13 +301,63 @@ export function useRoomSession() {
       const guest = new GuestPeerManager(socket, data.hostId);
       guestPeerRef.current = guest;
       guest.onMessage = handleGuestMessage;
-      guest.onConnected = () => setP2pStatus(null);
-      guest.onDisconnected = () => {
-        setP2pStatus({ ok: false, text: '⚠️ 연결이 끊어졌어요' });
+      guest.onConnected = () => {
+        syncP2pStatus(setP2pStatus, hostPeersRef, guestPeerRef);
       };
-      setP2pStatus({ ok: false, text: '📡 연결 중...' });
+      guest.onDisconnected = () => {
+        syncP2pStatus(setP2pStatus, hostPeersRef, guestPeerRef);
+      };
+
+      attachPeerStatusHandlers(hostPeersRef, guestPeerRef, setP2pStatus);
     },
     [handleGuestMessage]
+  );
+
+  const applyRoomData = useCallback(
+    (socket, data, { isReconnect = false } = {}) => {
+      teardownPeers();
+      clearPendingRemovals();
+
+      if (!isReconnect) {
+        gameEngineRef.current?.destroy();
+        gameEngineRef.current = null;
+        engineBackupRef.current = null;
+      } else if (!data.isHost) {
+        gameEngineRef.current?.destroy();
+        gameEngineRef.current = null;
+      }
+
+      setRoomCode(data.code);
+      roomCodeRef.current = data.code;
+      setIsHost(data.isHost);
+      isHostRef.current = data.isHost;
+      setSignalingStatus(null);
+      lobbyPlayersRef.current = data.players;
+      saveSession(data.code, myNameRef.current);
+      setUrlParams({ gameId: data.gameId, roomCode: data.code });
+
+      setRoom((prev) => ({
+        code: data.code,
+        gameId: data.gameId,
+        hostId: data.hostId,
+        players: data.players.map((p) => {
+          const existing = prev?.players?.find((x) => x.name === p.name);
+          return { ...p, score: existing?.score ?? 0 };
+        }),
+        maxPlayers: data.maxPlayers,
+        status: data.status ?? prev?.status ?? 'waiting',
+        messages: isReconnect ? (prev?.messages ?? []) : [],
+        myId: socket.id,
+        isDrawer: false,
+      }));
+
+      if (data.isHost) {
+        setupHostPeers(socket, data);
+      } else {
+        setupGuestPeers(socket, data);
+      }
+    },
+    [clearPendingRemovals, setupGuestPeers, setupHostPeers, teardownPeers]
   );
 
   const applyGameSelected = useCallback(
@@ -191,10 +365,26 @@ export function useRoomSession() {
       const game = getGame(gameId);
       if (!game) return;
 
+      if (isHostRef.current && gameEngineRef.current) {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...mergeEngineRoom(prev, gameEngineRef.current.getHostState()),
+                gameId,
+                maxPlayers: game.maxPlayers,
+              }
+            : prev
+        );
+        setUrlParams({ gameId, roomCode: code });
+        return;
+      }
+
       setRoom((prev) => {
         const messages = prev?.messages ?? [];
         if (isHostRef.current) {
-          initHostEngine(game, code, messages);
+          initHostEngine(game, code, messages, {
+            backup: engineBackupRef.current,
+          });
           if (gameEngineRef.current) {
             return {
               ...mergeEngineRoom(prev, gameEngineRef.current.getHostState()),
@@ -216,7 +406,63 @@ export function useRoomSession() {
     [initHostEngine]
   );
 
+  const handleHostMigration = useCallback(
+    (socket, data) => {
+      const amNewHost = socket.id === data.newHostId;
+
+      teardownPeers();
+      gameEngineRef.current?.destroy();
+      gameEngineRef.current = null;
+
+      setIsHost(amNewHost);
+      isHostRef.current = amNewHost;
+      lobbyPlayersRef.current = data.players;
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              hostId: data.newHostId,
+              gameId: data.gameId ?? prev.gameId,
+              players: data.players.map((p) => {
+                const existing = prev.players.find((x) => x.name === p.name);
+                return { ...existing, ...p, score: existing?.score ?? 0 };
+              }),
+              status: data.status ?? prev.status,
+            }
+          : prev
+      );
+
+      if (amNewHost) {
+        setupHostPeers(socket, {
+          ...data,
+          hostId: data.newHostId,
+          code: data.code,
+        });
+
+        const game = data.gameId ? getGame(data.gameId) : null;
+        if (game && engineBackupRef.current) {
+          initHostEngine(game, data.code, [], {
+            backup: engineBackupRef.current,
+          });
+          setRoom((prev) =>
+            prev && gameEngineRef.current
+              ? mergeEngineRoom(prev, gameEngineRef.current.getHostState())
+              : prev
+          );
+        }
+      } else {
+        setupGuestPeers(socket, {
+          ...data,
+          hostId: data.newHostId,
+        });
+      }
+    },
+    [initHostEngine, setupGuestPeers, setupHostPeers, teardownPeers]
+  );
+
   useEffect(() => {
+    intentionalLeaveRef.current = false;
+
     const socket = io({
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -225,44 +471,46 @@ export function useRoomSession() {
 
     socket.on('connect', () => {
       setMyId(socket.id);
-      setError('');
+
+      const session = readSession();
+      if (session?.active && session?.code && session?.name && !intentionalLeaveRef.current) {
+        setSignalingStatus({ level: 'warn', text: '🔄 서버 재연결 중...' });
+        socket.emit('rejoin-room', { code: session.code, name: session.name });
+      }
+    });
+
+    socket.io.on('reconnect', () => {
+      if (intentionalLeaveRef.current) return;
+      setSignalingStatus({ level: 'warn', text: '🔄 서버 재연결 중...' });
+      const session = readSession();
+      if (session?.active && session?.code && session?.name) {
+        socket.emit('rejoin-room', { code: session.code, name: session.name });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      if (roomCodeRef.current && !intentionalLeaveRef.current) {
+        setSignalingStatus({ level: 'warn', text: '🔄 서버 연결 끊김, 재연결 중...' });
+      }
     });
 
     socket.on('connect_error', () => {
-      setError('서버에 연결할 수 없어요.');
+      showToast('서버에 연결할 수 없어요.');
+      setSignalingStatus({ level: 'error', text: '🔴 서버 연결 실패' });
     });
 
     socket.on('room-joined', (data) => {
-      teardownPeers();
-      gameEngineRef.current?.destroy();
-      gameEngineRef.current = null;
-      setP2pStatus(null);
+      userActionRef.current = null;
+      dismissToast();
+      applyRoomData(socket, data);
+    });
 
-      setRoomCode(data.code);
-      roomCodeRef.current = data.code;
-      setIsHost(data.isHost);
-      isHostRef.current = data.isHost;
-      setError('');
-      lobbyPlayersRef.current = data.players;
-      setUrlParams({ gameId: data.gameId, roomCode: data.code });
-
-      setRoom({
-        code: data.code,
-        gameId: data.gameId,
-        hostId: data.hostId,
-        players: data.players.map((p) => ({ ...p, score: 0 })),
-        maxPlayers: data.maxPlayers,
-        status: 'waiting',
-        messages: [],
-        myId: socket.id,
-        isDrawer: false,
-      });
-
-      if (data.isHost) {
-        setupHostPeers(socket, data);
-      } else {
-        setupGuestPeers(socket, data);
-      }
+    socket.on('room-rejoined', (data) => {
+      userActionRef.current = null;
+      dismissToast();
+      applyRoomData(socket, data, { isReconnect: true });
+      setSignalingStatus({ level: 'ok', text: '서버 재접속 완료' });
+      setTimeout(() => setSignalingStatus(null), 2500);
     });
 
     socket.on('return-to-lobby', () => {
@@ -296,7 +544,7 @@ export function useRoomSession() {
               maxPlayers: data.maxPlayers ?? prev.maxPlayers,
               players: data.players.map((p) => ({
                 ...p,
-                score: prev.players.find((x) => x.id === p.id)?.score ?? 0,
+                score: prev.players.find((x) => x.id === p.id || x.name === p.name)?.score ?? 0,
               })),
             }
           : prev
@@ -316,7 +564,52 @@ export function useRoomSession() {
     });
 
     socket.on('peer-joined', ({ socketId }) => {
+      cancelPlayerRemoval(socketId);
       hostPeersRef.current?.connectGuest(socketId);
+    });
+
+    socket.on('peer-left', ({ socketId, graceMs }) => {
+      schedulePlayerRemoval(socketId);
+      hostPeersRef.current?.removePeer(socketId, { notify: false });
+    });
+
+    socket.on('peer-rejoined', ({ oldSocketId, newSocketId, name }) => {
+      cancelPlayerRemoval(oldSocketId);
+      cancelPlayerRemoval(newSocketId);
+
+      lobbyPlayersRef.current = lobbyPlayersRef.current.map((p) =>
+        p.id === oldSocketId || p.name === name ? { ...p, id: newSocketId, name } : p
+      );
+
+      gameEngineRef.current?.replacePlayerId?.(oldSocketId, newSocketId);
+
+      if (hostPeersRef.current) {
+        hostPeersRef.current.removePeer(oldSocketId, { notify: false });
+        hostPeersRef.current.connectGuest(newSocketId);
+      }
+
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              players: prev.players.map((p) =>
+                p.id === oldSocketId || p.name === name ? { ...p, id: newSocketId, name } : p
+              ),
+            }
+          : prev
+      );
+    });
+
+    socket.on('host-migrated', (data) => {
+      handleHostMigration(socket, data);
+      setSignalingStatus({
+        level: 'warn',
+        text:
+          socket.id === data.newHostId
+            ? '👑 방장 권한을 이어받았어요'
+            : `👑 ${data.newHostName}님이 새 방장이에요`,
+      });
+      setTimeout(() => setSignalingStatus(null), 4000);
     });
 
     socket.on('webrtc-signal', async ({ from, signal }) => {
@@ -331,28 +624,59 @@ export function useRoomSession() {
       gameEngineRef.current?.destroy();
       gameEngineRef.current = null;
       teardownPeers();
+      clearPendingRemovals();
       lobbyPlayersRef.current = [];
       canvasRef.current?.clear();
       roomCodeRef.current = null;
+      clearSession();
 
-      setError(msg);
+      showToast(msg);
       setRoom(null);
       setRoomCode(null);
       setP2pStatus(null);
+      setSignalingStatus(null);
       setUrlParams({ gameId: null, roomCode: null });
     });
 
     socket.on('error', (msg) => {
-      setError(msg);
+      const fromUser = userActionRef.current;
+      userActionRef.current = null;
+
+      if (msg === '방을 찾을 수 없어요.' || (typeof msg === 'string' && msg.includes('재접속'))) {
+        clearSession();
+      }
+
+      if (msg === '방을 찾을 수 없어요.' && fromUser !== 'join') {
+        return;
+      }
+
+      if (typeof msg === 'string' && msg.includes('재접속') && !fromUser) {
+        return;
+      }
+
+      showToast(msg);
     });
 
     return () => {
+      intentionalLeaveRef.current = true;
+      dismissToast();
       gameEngineRef.current?.destroy();
       hostPeersRef.current?.destroy();
       guestPeerRef.current?.destroy();
+      clearPendingRemovals();
       socket.disconnect();
     };
-  }, [applyGameSelected, setupGuestPeers, setupHostPeers, teardownPeers]);
+  }, [
+    applyGameSelected,
+    applyRoomData,
+    cancelPlayerRemoval,
+    clearPendingRemovals,
+    handleHostMigration,
+    schedulePlayerRemoval,
+    teardownPeers,
+    dismissToast,
+    showToast,
+  ]);
 
   useEffect(() => {
     isHostRef.current = isHost;
@@ -406,18 +730,22 @@ export function useRoomSession() {
   const createRoom = useCallback((name) => {
     myNameRef.current = name;
     setMyName(name);
-    setError('');
+    userActionRef.current = 'create';
+    dismissToast();
     setP2pStatus(null);
+    setSignalingStatus(null);
     socketRef.current?.emit('create-room', { name });
-  }, []);
+  }, [dismissToast]);
 
   const joinRoom = useCallback((code, name) => {
     myNameRef.current = name;
     setMyName(name);
-    setError('');
+    userActionRef.current = 'join';
+    dismissToast();
     setP2pStatus(null);
+    setSignalingStatus(null);
     socketRef.current?.emit('join-room', { code, name });
-  }, []);
+  }, [dismissToast]);
 
   const selectGame = useCallback(
     (gameId) => {
@@ -426,24 +754,20 @@ export function useRoomSession() {
       if (!game) return;
       if (lobbyPlayersRef.current.length < game.minPlayers) return;
 
-      setError('');
       socketRef.current?.emit('select-game', {
         code: roomCode,
         gameId,
         minPlayers: game.minPlayers,
       });
-      applyGameSelected(gameId, roomCode);
     },
-    [applyGameSelected, roomCode]
+    [roomCode]
   );
 
   const returnToLobby = useCallback(() => {
     if (!isHostRef.current || !roomCodeRef.current) return;
 
     const messages =
-      gameEngineRef.current?.getHostState()?.messages ??
-      room?.messages ??
-      [];
+      gameEngineRef.current?.getHostState()?.messages ?? room?.messages ?? [];
 
     gameEngineRef.current?.destroy();
     gameEngineRef.current = null;
@@ -469,11 +793,14 @@ export function useRoomSession() {
   }, [room?.messages]);
 
   const leaveRoom = useCallback(() => {
+    intentionalLeaveRef.current = true;
     gameEngineRef.current?.destroy();
     gameEngineRef.current = null;
     teardownPeers();
+    clearPendingRemovals();
     lobbyPlayersRef.current = [];
     canvasRef.current?.clear();
+    clearSession();
 
     const socket = socketRef.current;
     if (socket) {
@@ -487,17 +814,19 @@ export function useRoomSession() {
     setIsHost(false);
     isHostRef.current = false;
     setP2pStatus(null);
-    setError('');
+    setSignalingStatus(null);
+    dismissToast();
     setUrlParams({ gameId: null, roomCode: null });
-  }, [teardownPeers]);
+  }, [clearPendingRemovals, dismissToast, teardownPeers]);
 
   return {
     room,
     activeGame,
     isHost,
-    error,
-    setError,
+    toast,
+    dismissToast,
     p2pStatus,
+    signalingStatus,
     canvasRef,
     createRoom,
     joinRoom,

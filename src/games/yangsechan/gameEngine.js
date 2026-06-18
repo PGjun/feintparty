@@ -48,9 +48,31 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.messages.push({ type: 'system', text, time: Date.now() });
   }
 
+  function exportSnapshot() {
+    return {
+      code: state.code,
+      players: state.players.map((p) => ({ ...p })),
+      status: state.status,
+      submissions: { ...state.submissions },
+      assignedWords: { ...state.assignedWords },
+      turnPlayerIndex: state.turnPlayerIndex,
+      turnNumber: state.turnNumber,
+      turnMode: state.turnMode,
+      answerPending: state.answerPending,
+      timeLeft: state.timeLeft,
+      lastStand: state.lastStand,
+      lastStandPlayerId: state.lastStandPlayerId,
+      messages: state.messages.slice(-50),
+    };
+  }
+
   function broadcastState() {
+    const backup = exportSnapshot();
     state.players.forEach((p) => {
       onBroadcast(p.id, { type: 'state', state: getStateForPlayer(p.id) });
+      if (p.id !== hostId) {
+        onBroadcast(p.id, { type: 'engine-backup', backup });
+      }
     });
   }
 
@@ -270,6 +292,19 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     }
   }
 
+  function startTurnTimer() {
+    clearTimer();
+    state.timer = setInterval(() => {
+      state.timeLeft--;
+      if (state.timeLeft <= 0) {
+        addSystemMessage(`⏱ 시간 초과! 턴이 넘어갑니다.`);
+        advanceTurn();
+        return;
+      }
+      broadcastState();
+    }, 1000);
+  }
+
   function startTurn() {
     const current = getCurrentTurnPlayer();
     if (!current || current.guessed) {
@@ -282,17 +317,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.timeLeft = TURN_TIME;
     addSystemMessage(`${current.name}님의 턴입니다! (${state.turnNumber}번째 턴)`);
 
-    clearTimer();
-    state.timer = setInterval(() => {
-      state.timeLeft--;
-      if (state.timeLeft <= 0) {
-        addSystemMessage(`⏱ 시간 초과! 턴이 넘어갑니다.`);
-        advanceTurn();
-        return;
-      }
-      broadcastState();
-    }, 1000);
-
+    startTurnTimer();
     broadcastState();
   }
 
@@ -510,6 +535,51 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
 
     getHostState() {
       return getStateForPlayer(hostId);
+    },
+
+    exportState() {
+      return exportSnapshot();
+    },
+
+    importState(snapshot) {
+      clearTimer();
+      state.code = snapshot.code ?? state.code;
+      state.players = (snapshot.players ?? []).map((p) => ({ ...p }));
+      state.status = snapshot.status ?? 'waiting';
+      state.submissions = { ...(snapshot.submissions ?? {}) };
+      state.assignedWords = { ...(snapshot.assignedWords ?? {}) };
+      state.turnPlayerIndex = snapshot.turnPlayerIndex ?? 0;
+      state.turnNumber = snapshot.turnNumber ?? 1;
+      state.turnMode = snapshot.turnMode ?? null;
+      state.answerPending = snapshot.answerPending ?? false;
+      state.timeLeft = snapshot.timeLeft ?? TURN_TIME;
+      state.lastStand = snapshot.lastStand ?? false;
+      state.lastStandPlayerId = snapshot.lastStandPlayerId ?? null;
+      state.messages = (snapshot.messages ?? []).slice(-50);
+      state.timer = null;
+
+      if (state.status === 'playing' && !state.lastStand && state.timeLeft > 0) {
+        startTurnTimer();
+      }
+      broadcastState();
+    },
+
+    replacePlayerId(oldId, newId) {
+      state.players = state.players.map((p) =>
+        p.id === oldId ? { ...p, id: newId } : p
+      );
+      if (state.submissions[oldId]) {
+        state.submissions[newId] = state.submissions[oldId];
+        delete state.submissions[oldId];
+      }
+      if (state.assignedWords[oldId]) {
+        state.assignedWords[newId] = state.assignedWords[oldId];
+        delete state.assignedWords[oldId];
+      }
+      if (state.lastStandPlayerId === oldId) {
+        state.lastStandPlayerId = newId;
+      }
+      broadcastState();
     },
 
     destroy() {

@@ -3,7 +3,7 @@ import DrawingCanvas from './DrawingCanvas.jsx';
 import { CopyIconButton } from '../../platform/components/CopyIconButton.jsx';
 import { ChatPanel } from '../../platform/components/ChatPanel.jsx';
 import { buildInviteLink } from '../../platform/url.js';
-import { DEFAULT_ROUNDS, MAX_PLAYERS } from './constants.js';
+import { DEFAULT_ROUNDS } from './constants.js';
 
 function getWinners(players) {
   const sorted = [...players].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
@@ -18,25 +18,10 @@ function formatWinnerMessage(winners) {
   return `${names}가 ${score}점으로 이겼습니다!`;
 }
 
-function getLobbyStatusBar(room, isHost, p2pStatus) {
-  if (p2pStatus && !p2pStatus.ok) {
-    return p2pStatus;
-  }
-
-  const count = `${room.players.length}/${MAX_PLAYERS}명`;
-  return {
-    ok: true,
-    text: isHost
-      ? `👑 방장 — 참가자를 기다리는 중... (${count})`
-      : `참가자를 기다리는 중... (${count})`,
-  };
-}
-
 export default function GameRoom({
   gameId,
   room,
   isHost,
-  p2pStatus,
   onStartGame,
   onSendChat,
   onDraw,
@@ -61,13 +46,6 @@ export default function GameRoom({
     room.status === 'waiting' ||
     room.status === 'finished' ||
     (room.isDrawer && room.status === 'playing');
-
-  const statusBar =
-    room.status === 'waiting' || room.status === 'finished'
-      ? getLobbyStatusBar(room, isHost, p2pStatus)
-      : p2pStatus && !p2pStatus.ok
-        ? p2pStatus
-        : null;
 
   return (
     <div className="game">
@@ -103,10 +81,6 @@ export default function GameRoom({
             </>
           )}
         </div>
-
-        {statusBar && (
-          <div className={`p2p-status ${statusBar.ok ? 'ok' : 'warn'}`}>{statusBar.text}</div>
-        )}
 
         <DrawingCanvas
           ref={canvasRef}

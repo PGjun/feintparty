@@ -31,8 +31,7 @@ function handleHostMessage(msg, guestSocketId, ctx) {
 }
 
 function handleGuestMessage(msg, ctx) {
-  const { setP2pStatus, setRoom } = ctx;
-  setP2pStatus(null);
+  const { setRoom } = ctx;
 
   if (msg.type === 'state') {
     setRoom((prev) => (prev ? mergeEngineRoom(prev, msg.state) : msg.state));

@@ -2,16 +2,8 @@ import { CopyIconButton } from './components/CopyIconButton.jsx';
 import { ChatPanel } from './components/ChatPanel.jsx';
 import { buildInviteLink } from './url.js';
 
-export function PartyRoom({ room, isHost, p2pStatus, games, onSelectGame, onSendChat }) {
+export function PartyRoom({ room, isHost, games, onSelectGame, onSendChat }) {
   const inviteLink = buildInviteLink(room.code);
-  const count = `${room.players.length}/${room.maxPlayers}명`;
-
-  const statusText =
-    p2pStatus && !p2pStatus.ok
-      ? p2pStatus.text
-      : isHost
-        ? `👑 방장 — 참가자 ${count}`
-        : `참가자 ${count}`;
 
   return (
     <div className="party-room">
@@ -28,8 +20,6 @@ export function PartyRoom({ room, isHost, p2pStatus, games, onSelectGame, onSend
             <CopyIconButton text={inviteLink} title="링크 복사" />
           </div>
         </div>
-
-        <div className={`p2p-status ${p2pStatus && !p2pStatus.ok ? 'warn' : 'ok'}`}>{statusText}</div>
 
         <div className="players-bar party-players">
           {room.players.map((p) => (

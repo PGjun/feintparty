@@ -7,7 +7,6 @@ function AssigningPanel({ room, wordInput, onWordChange, onConfirm, onBeginPlayi
   return (
     <div className="yang-assigning">
       <h3 className="yang-section-title">단어 정하기</h3>
-      <p className="yang-section-desc">내가 낼 단어를 입력하고 확정해주세요. 전원 확정 후 게임을 시작할 수 있어요.</p>
 
       {!room.myConfirmed ? (
         <div className="yang-word-form">
@@ -176,7 +175,6 @@ export default function GameRoom({
   gameId,
   room,
   isHost,
-  p2pStatus,
   onSendChat,
   handlers = {},
 }) {
@@ -209,11 +207,6 @@ export default function GameRoom({
   const isAssigningPhase = room.status === 'assigning' || room.status === 'waiting';
   const showInvite = isAssigningPhase || isFinished;
 
-  const statusBar =
-    p2pStatus && !p2pStatus.ok ? (
-      <div className={`p2p-status warn`}>{p2pStatus.text}</div>
-    ) : null;
-
   const chatPlaceholder = room.lastStand
     ? '질문이나 정답을 입력하세요...'
     : room.status === 'playing' && room.isMyTurn && room.turnMode === 'answer'
@@ -223,8 +216,6 @@ export default function GameRoom({
   return (
     <div className="game game-yangsechan">
       <div className="game-main">
-        {statusBar}
-
         <div className="status-bar yang-players-bar">
           <div className="players-bar">
             {room.players.map((p) => (

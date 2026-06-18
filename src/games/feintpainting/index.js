@@ -18,10 +18,29 @@ function handleHostMessage(msg, guestSocketId, ctx) {
     return true;
   }
 
+  if (msg.type === 'game-draw') {
+    const hostState = engine.getHostState();
+    if (hostState.status !== 'playing') return true;
+    const drawer = hostState.players[hostState.drawerIndex];
+    if (drawer?.id !== guestSocketId) return true;
+    canvasRef.current?.drawStroke(msg.stroke);
+    hostPeers.broadcastExcept(guestSocketId, { type: 'draw', stroke: msg.stroke });
+    return true;
+  }
+
   if (msg.type === 'lobby-clear') {
     if (!isFreeDrawStatus(engine.getHostState().status)) return true;
     canvasRef.current?.clear();
     hostPeers.broadcast({ type: 'clear' });
+    return true;
+  }
+
+  if (msg.type === 'game-clear') {
+    const hostState = engine.getHostState();
+    if (hostState.status !== 'playing') return true;
+    const drawer = hostState.players[hostState.drawerIndex];
+    if (drawer?.id !== guestSocketId) return true;
+    engine.handleClearCanvas();
     return true;
   }
 
@@ -38,8 +57,7 @@ function handleHostMessage(msg, guestSocketId, ctx) {
 }
 
 function handleGuestMessage(msg, ctx) {
-  const { setP2pStatus, setRoom, canvasRef } = ctx;
-  setP2pStatus(null);
+  const { setRoom, canvasRef } = ctx;
 
   if (msg.type === 'state') {
     setRoom((prev) => (prev ? mergeEngineRoom(prev, msg.state) : msg.state));
@@ -105,7 +123,11 @@ export function createHandlers(ctx) {
         }
         return;
       }
-      gameEngineRef.current?.handleDraw(stroke);
+      if (isHost) {
+        gameEngineRef.current?.handleDraw(stroke);
+      } else if (room?.isDrawer) {
+        guestPeerRef.current?.send({ type: 'game-draw', stroke });
+      }
     },
 
     handleClear() {
@@ -119,7 +141,11 @@ export function createHandlers(ctx) {
         }
         return;
       }
-      gameEngineRef.current?.handleClearCanvas();
+      if (isHost) {
+        gameEngineRef.current?.handleClearCanvas();
+      } else if (room?.isDrawer) {
+        guestPeerRef.current?.send({ type: 'game-clear' });
+      }
     },
   };
 }

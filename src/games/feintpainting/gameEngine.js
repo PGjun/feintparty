@@ -16,6 +16,7 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     timeLeft: ROUND_TIME,
     messages: [],
     timer: null,
+    endRoundTimer: null,
   };
 
   function getStateForPlayer(playerId) {
@@ -42,9 +43,27 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     return view;
   }
 
+  function exportSnapshot() {
+    return {
+      code: state.code,
+      players: state.players.map((p) => ({ ...p })),
+      drawerIndex: state.drawerIndex,
+      round: state.round,
+      maxRounds: state.maxRounds,
+      status: state.status,
+      currentWord: state.currentWord,
+      timeLeft: state.timeLeft,
+      messages: state.messages.slice(-50),
+    };
+  }
+
   function broadcastState() {
+    const backup = exportSnapshot();
     state.players.forEach((p) => {
       onBroadcast(p.id, { type: 'state', state: getStateForPlayer(p.id) });
+      if (p.id !== hostId) {
+        onBroadcast(p.id, { type: 'engine-backup', backup });
+      }
     });
   }
 
@@ -62,7 +81,11 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     );
     state.timeLeft = ROUND_TIME;
     onClearCanvas();
+    startRoundTimer();
+    broadcastState();
+  }
 
+  function startRoundTimer() {
     clearInterval(state.timer);
     state.timer = setInterval(() => {
       state.timeLeft--;
@@ -72,8 +95,6 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
         broadcastState();
       }
     }, 1000);
-
-    broadcastState();
   }
 
   function endRound(guessed) {
@@ -87,7 +108,8 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     }
     broadcastState();
 
-    setTimeout(() => {
+    clearTimeout(state.endRoundTimer);
+    state.endRoundTimer = setTimeout(() => {
       state.drawerIndex = (state.drawerIndex + 1) % state.players.length;
       if (state.drawerIndex === 0) state.round++;
 
@@ -112,11 +134,21 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     },
 
     setPlayers(players) {
+      const oldDrawerId = state.players[state.drawerIndex]?.id;
       state.players = players.map((p) => ({
         id: p.id,
         name: p.name,
-        score: state.players.find((x) => x.id === p.id)?.score ?? 0,
+        score:
+          state.players.find((x) => x.id === p.id)?.score ??
+          state.players.find((x) => x.name === p.name)?.score ??
+          0,
       }));
+
+      if (oldDrawerId) {
+        const idx = state.players.findIndex((p) => p.id === oldDrawerId);
+        state.drawerIndex = idx >= 0 ? idx : 0;
+      }
+
       broadcastState();
     },
 
@@ -199,8 +231,42 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       return getStateForPlayer(hostId);
     },
 
+    exportState() {
+      return exportSnapshot();
+    },
+
+    importState(snapshot) {
+      clearInterval(state.timer);
+      clearTimeout(state.endRoundTimer);
+      state.endRoundTimer = null;
+      state.code = snapshot.code ?? state.code;
+      state.players = (snapshot.players ?? []).map((p) => ({ ...p }));
+      state.drawerIndex = snapshot.drawerIndex ?? 0;
+      state.round = snapshot.round ?? 1;
+      state.maxRounds = snapshot.maxRounds ?? DEFAULT_ROUNDS;
+      state.status = snapshot.status ?? 'waiting';
+      state.currentWord = snapshot.currentWord ?? '';
+      state.timeLeft = snapshot.timeLeft ?? ROUND_TIME;
+      state.messages = (snapshot.messages ?? []).slice(-50);
+      state.timer = null;
+
+      if (state.status === 'playing' && state.timeLeft > 0) {
+        startRoundTimer();
+      }
+      broadcastState();
+    },
+
+    replacePlayerId(oldId, newId) {
+      state.players = state.players.map((p) =>
+        p.id === oldId ? { ...p, id: newId } : p
+      );
+      broadcastState();
+    },
+
     destroy() {
       clearInterval(state.timer);
+      clearTimeout(state.endRoundTimer);
+      state.endRoundTimer = null;
     },
   };
 }

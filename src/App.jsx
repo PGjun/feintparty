@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { GAMES } from './games/registry.js';
+import { HeaderStatus } from './platform/components/HeaderStatus.jsx';
+import { Toast } from './platform/components/Toast.jsx';
 import { PartyLobby } from './platform/PartyLobby.jsx';
 import { PartyRoom } from './platform/PartyRoom.jsx';
 import { useRoomSession } from './platform/useRoomSession.js';
@@ -12,8 +14,10 @@ export default function App() {
     room,
     activeGame,
     isHost,
-    error,
+    toast,
+    dismissToast,
     p2pStatus,
+    signalingStatus,
     canvasRef,
     createRoom,
     joinRoom,
@@ -63,6 +67,7 @@ export default function App() {
   }, [room]);
 
   const RoomView = activeGame?.RoomView;
+  const hideHeaderStatusWhenOk = Boolean(room?.gameId && room?.status === 'playing');
 
   return (
     <div className={`app${!room ? ' lobby-page' : ''}`}>
@@ -93,6 +98,13 @@ export default function App() {
           ) : (
             <span className="header-party-label">Feint Party</span>
           )}
+          <HeaderStatus
+            room={room}
+            isHost={isHost}
+            p2pStatus={p2pStatus}
+            signalingStatus={signalingStatus}
+            hideWhenOk={hideHeaderStatusWhenOk}
+          />
         </header>
       )}
 
@@ -100,14 +112,12 @@ export default function App() {
         <PartyLobby
           onCreate={createRoom}
           onJoin={joinRoom}
-          error={error}
           defaultRoomCode={defaultRoomCode}
         />
       ) : inPartyLobby ? (
         <PartyRoom
           room={room}
           isHost={isHost}
-          p2pStatus={p2pStatus}
           games={GAMES}
           onSelectGame={selectGame}
           onSendChat={sendChat}
@@ -118,7 +128,6 @@ export default function App() {
             gameId={room.gameId}
             room={room}
             isHost={isHost}
-            p2pStatus={p2pStatus}
             canvasRef={canvasRef}
             onSendChat={sendChat}
             handlers={handlers}
@@ -129,7 +138,7 @@ export default function App() {
         )
       )}
 
-      {error && room && <div className="error-msg floating">{error}</div>}
+      <Toast message={toast} onDismiss={dismissToast} />
     </div>
   );
 }
