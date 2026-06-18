@@ -183,7 +183,7 @@ const DrawingCanvas = forwardRef(function DrawingCanvas(
   return (
     <div
       ref={wrapperRef}
-      className={`canvas-wrapper ${!isDrawer ? 'readonly' : ''} ${isDrawer ? 'drawing' : ''}`}
+      className={`canvas-wrapper ${!isDrawer ? 'readonly' : 'drawer'}`}
     >
       <canvas
         ref={canvasRef}

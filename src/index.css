@@ -628,6 +628,10 @@ input:focus {
   gap: 16px;
 }
 
+.game-feintpainting {
+  gap: 24px;
+}
+
 @media (max-width: 768px) {
   .game {
     grid-template-columns: 1fr;
@@ -741,8 +745,7 @@ input:focus {
   margin: 0 auto;
 }
 
-.canvas-wrapper.drawing {
-  touch-action: none;
+.canvas-wrapper.drawer canvas {
   -webkit-user-select: none;
   user-select: none;
 }
@@ -760,6 +763,7 @@ input:focus {
 
 .canvas-wrapper.readonly canvas {
   cursor: default;
+  touch-action: pan-y;
 }
 
 .toolbar {
@@ -767,6 +771,7 @@ input:focus {
   flex-direction: column;
   gap: 10px;
   margin-top: 10px;
+  touch-action: manipulation;
 }
 
 .color-palette {

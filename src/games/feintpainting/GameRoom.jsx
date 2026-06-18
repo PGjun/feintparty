@@ -48,7 +48,7 @@ export default function GameRoom({
     (room.isDrawer && room.status === 'playing');
 
   return (
-    <div className="game">
+    <div className="game game-feintpainting">
       <div className="game-main">
         <div className="status-bar">
           <div className="players-bar">
