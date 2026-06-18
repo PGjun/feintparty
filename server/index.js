@@ -168,6 +168,7 @@ function handlePlayerReconnect(socket, room, name, grace) {
     room.graceSlots.delete(name);
   }
 
+  leaveSocketRoom(socket);
   socket.join(room.code);
   socket.roomCode = room.code;
 
@@ -200,8 +201,15 @@ function appendLobbyMessage(room, message) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size });
+  res.json({ ok: true, rooms: rooms.size, supportsServerMode: true });
 });
+
+function leaveSocketRoom(socket) {
+  const prev = socket.roomCode;
+  if (!prev) return;
+  socket.leave(prev);
+  delete socket.roomCode;
+}
 
 io.on('connection', (socket) => {
   socket.on('create-room', ({ name, mode = 'p2p' }) => {
@@ -211,6 +219,7 @@ io.on('connection', (socket) => {
       code = generateRoomCode();
     } while (rooms.has(code));
 
+    leaveSocketRoom(socket);
     const room = createRoom(code, socket.id, name, roomMode);
     rooms.set(code, room);
     socket.join(code);
@@ -245,6 +254,7 @@ io.on('connection', (socket) => {
       return;
     }
 
+    leaveSocketRoom(socket);
     room.players.push({ id: socket.id, name });
     socket.join(room.code);
     socket.roomCode = room.code;
@@ -307,10 +317,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('lobby-chat', ({ code, text }) => {
-    const room = rooms.get(code?.toUpperCase());
+    const roomCode = (code || socket.roomCode)?.toUpperCase();
+    const room = roomCode ? rooms.get(roomCode) : null;
     if (!room) return;
     const player = room.players.find((p) => p.id === socket.id);
-    if (!player) return;
+    if (!player) {
+      socket.emit('room-membership-lost');
+      return;
+    }
     const trimmed = text?.trim();
     if (!trimmed) return;
 

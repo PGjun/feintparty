@@ -76,6 +76,8 @@ export function useRoomSession() {
   const intentionalLeaveRef = useRef(false);
   const toastTimerRef = useRef(null);
   const userActionRef = useRef(null);
+  const pendingCreateModeRef = useRef(null);
+  const roomJoinedRef = useRef(false);
 
   const dismissToast = useCallback(() => {
     if (toastTimerRef.current) {
@@ -341,6 +343,7 @@ export function useRoomSession() {
       setRoomCode(data.code);
       roomCodeRef.current = data.code;
       roomModeRef.current = data.mode ?? 'p2p';
+      roomJoinedRef.current = true;
       setIsHost(data.isHost);
       isHostRef.current = data.isHost;
       setSignalingStatus(null);
@@ -517,8 +520,17 @@ export function useRoomSession() {
   useEffect(() => {
     intentionalLeaveRef.current = false;
 
+    const requestRejoin = ({ warn = false } = {}) => {
+      const session = readSession();
+      if (!session?.active || !session?.code || !session?.name) return;
+      if (warn && roomJoinedRef.current) {
+        setSignalingStatus({ level: 'warn', text: '🔄 서버 재연결 중...' });
+      }
+      socketRef.current?.emit('rejoin-room', { code: session.code, name: session.name });
+    };
+
     const socket = io({
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
     });
     socketRef.current = socket;
@@ -526,20 +538,20 @@ export function useRoomSession() {
     socket.on('connect', () => {
       setMyId(socket.id);
 
+      if (roomJoinedRef.current) {
+        requestRejoin({ warn: true });
+        return;
+      }
+
       const session = readSession();
       if (session?.active && session?.code && session?.name && !intentionalLeaveRef.current) {
-        setSignalingStatus({ level: 'warn', text: '🔄 서버 재연결 중...' });
         socket.emit('rejoin-room', { code: session.code, name: session.name });
       }
     });
 
     socket.io.on('reconnect', () => {
       if (intentionalLeaveRef.current) return;
-      setSignalingStatus({ level: 'warn', text: '🔄 서버 재연결 중...' });
-      const session = readSession();
-      if (session?.active && session?.code && session?.name) {
-        socket.emit('rejoin-room', { code: session.code, name: session.name });
-      }
+      requestRejoin({ warn: true });
     });
 
     socket.on('disconnect', () => {
@@ -559,6 +571,10 @@ export function useRoomSession() {
       );
     });
 
+    socket.on('room-membership-lost', () => {
+      requestRejoin({ warn: true });
+    });
+
     socket.on('game-state', (state) => {
       setRoom((prev) => (prev ? mergeEngineRoom(prev, state) : state));
     });
@@ -570,9 +586,14 @@ export function useRoomSession() {
     });
 
     socket.on('room-joined', (data) => {
+      const requestedMode = pendingCreateModeRef.current;
+      pendingCreateModeRef.current = null;
       userActionRef.current = null;
       dismissToast();
       applyRoomData(socket, data);
+      if (requestedMode === 'server' && data.mode !== 'server') {
+        showToast('서버 방 기능이 배포되지 않았어요. 지금은 P2P 방으로 동작합니다.');
+      }
     });
 
     socket.on('room-rejoined', (data) => {
@@ -604,11 +625,15 @@ export function useRoomSession() {
     });
 
     socket.on('lobby-update', (data) => {
+      if (data.mode) {
+        roomModeRef.current = data.mode;
+      }
       lobbyPlayersRef.current = data.players;
       setRoom((prev) =>
         prev
           ? {
               ...prev,
+              mode: data.mode ?? prev.mode,
               gameId: 'gameId' in data ? data.gameId : prev.gameId,
               hostId: data.hostId ?? prev.hostId,
               maxPlayers: data.maxPlayers ?? prev.maxPlayers,
@@ -698,6 +723,7 @@ export function useRoomSession() {
       lobbyPlayersRef.current = [];
       canvasRef.current?.clear();
       roomCodeRef.current = null;
+      roomJoinedRef.current = false;
       clearSession();
 
       showToast(msg);
@@ -714,6 +740,7 @@ export function useRoomSession() {
 
       if (msg === '방을 찾을 수 없어요.' || (typeof msg === 'string' && msg.includes('재접속'))) {
         clearSession();
+        setSignalingStatus(null);
       }
 
       if (msg === '방을 찾을 수 없어요.' && fromUser !== 'join') {
@@ -813,6 +840,7 @@ export function useRoomSession() {
     myNameRef.current = name;
     setMyName(name);
     userActionRef.current = 'create';
+    pendingCreateModeRef.current = mode;
     dismissToast();
     setP2pStatus(null);
     setSignalingStatus(null);
@@ -823,6 +851,7 @@ export function useRoomSession() {
     myNameRef.current = name;
     setMyName(name);
     userActionRef.current = 'join';
+    pendingCreateModeRef.current = null;
     dismissToast();
     setP2pStatus(null);
     setSignalingStatus(null);
@@ -893,6 +922,7 @@ export function useRoomSession() {
     setRoom(null);
     setRoomCode(null);
     roomCodeRef.current = null;
+    roomJoinedRef.current = false;
     setIsHost(false);
     isHostRef.current = false;
     setP2pStatus(null);
