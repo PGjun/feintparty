@@ -77,7 +77,13 @@ function pruneGraceSlots(room) {
   const now = Date.now();
   for (const [name, slot] of room.graceSlots) {
     if (slot.graceUntil <= now) {
+      const wasSoloHostGrace =
+        slot.oldSocketId === room.hostId && room.players.length === 0;
       room.graceSlots.delete(name);
+      if (wasSoloHostGrace) {
+        gameHost.destroyEngine(room.code);
+        rooms.delete(room.code);
+      }
     }
   }
 }
@@ -145,11 +151,17 @@ function tryMigrateHost(room, code, oldHostId) {
 function handlePlayerReconnect(socket, room, name, grace) {
   const oldSocketId = grace?.oldSocketId;
   const existingIdx = room.players.findIndex((p) => p.name === name);
+  const previousSocketId = existingIdx >= 0 ? room.players[existingIdx].id : oldSocketId;
+  const shouldRestoreHost = previousSocketId && room.hostId === previousSocketId;
 
   if (existingIdx >= 0) {
     room.players[existingIdx].id = socket.id;
   } else {
     room.players.push({ id: socket.id, name });
+  }
+
+  if (shouldRestoreHost) {
+    room.hostId = socket.id;
   }
 
   if (grace) {
@@ -163,13 +175,17 @@ function handlePlayerReconnect(socket, room, name, grace) {
   emitRoomJoined(socket, room, { isHost, isReconnect: true });
 
   if (isServerRoom(room)) {
-    if (oldSocketId && oldSocketId !== socket.id) {
-      gameHost.replacePlayerId(room, oldSocketId, socket.id);
+    if (previousSocketId && previousSocketId !== socket.id) {
+      gameHost.replacePlayerId(room, previousSocketId, socket.id);
     }
     syncServerPlayers(room);
-  } else if (oldSocketId && oldSocketId !== socket.id) {
+  } else if (
+    previousSocketId &&
+    previousSocketId !== socket.id &&
+    socket.id !== room.hostId
+  ) {
     io.to(room.hostId).emit('peer-rejoined', {
-      oldSocketId,
+      oldSocketId: previousSocketId,
       newSocketId: socket.id,
       name,
     });
@@ -365,6 +381,9 @@ io.on('connection', (socket) => {
 
     if (socket.id === room.hostId) {
       const oldHostId = socket.id;
+      if (room.players.length === 0) {
+        return;
+      }
       if (!tryMigrateHost(room, code, oldHostId)) {
         io.to(code).emit('room-closed', '방이 종료됩니다.');
       }
