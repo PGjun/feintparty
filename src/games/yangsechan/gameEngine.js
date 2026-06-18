@@ -24,7 +24,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     status: 'waiting',
     submissions: {},
     assignedWords: {},
-    memos: {},
     turnPlayerIndex: 0,
     turnNumber: 1,
     turnMode: null,
@@ -63,7 +62,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
   function resetAssigningState() {
     state.submissions = {};
     state.assignedWords = {};
-    state.memos = {};
     state.turnPlayerIndex = 0;
     state.turnNumber = 1;
     state.turnMode = null;
@@ -139,7 +137,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       myDraftWord: submission?.confirmed ? '' : (submission?.word ?? ''),
       myConfirmed: !!submission?.confirmed,
       messages: state.messages.slice(-50),
-      memo: state.memos[playerId] ?? '',
       myId: playerId,
       myWord,
       myWordRevealReason,
@@ -378,7 +375,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       removed.forEach((id) => {
         delete state.submissions[id];
         delete state.assignedWords[id];
-        delete state.memos[id];
       });
 
       if (removed.length > 0) handlePlayerLeave();
@@ -447,14 +443,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
         case 'give-up': {
           if (!state.lastStand || playerId !== state.lastStandPlayerId) return;
           finishLastStandAsGiveUp(playerId, playerName);
-          break;
-        }
-        case 'update-memo': {
-          state.memos[playerId] = payload.text ?? '';
-          onBroadcast(playerId, {
-            type: 'state',
-            state: getStateForPlayer(playerId),
-          });
           break;
         }
         case 'begin-playing': {

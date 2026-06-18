@@ -25,6 +25,23 @@ export function useRoomSession() {
   const roomCodeRef = useRef(null);
   const gameIdRef = useRef(null);
 
+  const teardownPeers = useCallback(() => {
+    if (guestPeerRef.current) {
+      guestPeerRef.current.onDisconnected = null;
+      guestPeerRef.current.onConnected = null;
+      guestPeerRef.current.onMessage = null;
+      guestPeerRef.current.destroy();
+      guestPeerRef.current = null;
+    }
+    if (hostPeersRef.current) {
+      hostPeersRef.current.onPeerDisconnected = null;
+      hostPeersRef.current.onPeerConnected = null;
+      hostPeersRef.current.onMessage = null;
+      hostPeersRef.current.destroy();
+      hostPeersRef.current = null;
+    }
+  }, []);
+
   const activeGame = room?.gameId ? getGame(room.gameId) : null;
 
   useEffect(() => {
@@ -216,6 +233,11 @@ export function useRoomSession() {
     });
 
     socket.on('room-joined', (data) => {
+      teardownPeers();
+      gameEngineRef.current?.destroy();
+      gameEngineRef.current = null;
+      setP2pStatus(null);
+
       setRoomCode(data.code);
       roomCodeRef.current = data.code;
       setIsHost(data.isHost);
@@ -306,6 +328,13 @@ export function useRoomSession() {
     });
 
     socket.on('room-closed', (msg) => {
+      gameEngineRef.current?.destroy();
+      gameEngineRef.current = null;
+      teardownPeers();
+      lobbyPlayersRef.current = [];
+      canvasRef.current?.clear();
+      roomCodeRef.current = null;
+
       setError(msg);
       setRoom(null);
       setRoomCode(null);
@@ -323,7 +352,7 @@ export function useRoomSession() {
       guestPeerRef.current?.destroy();
       socket.disconnect();
     };
-  }, [applyGameSelected, setupGuestPeers, setupHostPeers]);
+  }, [applyGameSelected, setupGuestPeers, setupHostPeers, teardownPeers]);
 
   useEffect(() => {
     isHostRef.current = isHost;
@@ -378,6 +407,7 @@ export function useRoomSession() {
     myNameRef.current = name;
     setMyName(name);
     setError('');
+    setP2pStatus(null);
     socketRef.current?.emit('create-room', { name });
   }, []);
 
@@ -385,6 +415,7 @@ export function useRoomSession() {
     myNameRef.current = name;
     setMyName(name);
     setError('');
+    setP2pStatus(null);
     socketRef.current?.emit('join-room', { code, name });
   }, []);
 
@@ -440,10 +471,7 @@ export function useRoomSession() {
   const leaveRoom = useCallback(() => {
     gameEngineRef.current?.destroy();
     gameEngineRef.current = null;
-    hostPeersRef.current?.destroy();
-    hostPeersRef.current = null;
-    guestPeerRef.current?.destroy();
-    guestPeerRef.current = null;
+    teardownPeers();
     lobbyPlayersRef.current = [];
     canvasRef.current?.clear();
 
@@ -461,7 +489,7 @@ export function useRoomSession() {
     setP2pStatus(null);
     setError('');
     setUrlParams({ gameId: null, roomCode: null });
-  }, []);
+  }, [teardownPeers]);
 
   return {
     room,

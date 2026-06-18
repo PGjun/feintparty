@@ -94,10 +94,6 @@ export function createHandlers(ctx) {
     handleGiveUp() {
       sendAction(ctx, 'give-up');
     },
-
-    handleUpdateMemo(text) {
-      sendAction(ctx, 'update-memo', { text });
-    },
   };
 }
 

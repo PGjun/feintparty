@@ -181,6 +181,7 @@ export default function GameRoom({
   handlers = {},
 }) {
   const [wordInput, setWordInput] = useState(room.myDraftWord || '');
+  const [memoText, setMemoText] = useState('');
 
   const {
     handleStartGame,
@@ -189,7 +190,6 @@ export default function GameRoom({
     handleSelectMode,
     handlePassTurn,
     handleGiveUp,
-    handleUpdateMemo,
   } = handlers;
 
   useEffect(() => {
@@ -197,6 +197,12 @@ export default function GameRoom({
       setWordInput(room.myDraftWord || '');
     }
   }, [room.myDraftWord, room.myConfirmed]);
+
+  useEffect(() => {
+    if (room.status === 'assigning') {
+      setMemoText('');
+    }
+  }, [room.status]);
 
   const inviteLink = buildInviteLink(room.code, gameId);
   const isFinished = room.status === 'finished';
@@ -300,8 +306,8 @@ export default function GameRoom({
             <textarea
               className="yang-memo-input"
               placeholder="나만 보는 메모..."
-              value={room.memo || ''}
-              onChange={(e) => handleUpdateMemo?.(e.target.value)}
+              value={memoText}
+              onChange={(e) => setMemoText(e.target.value)}
               rows={3}
             />
           </div>
