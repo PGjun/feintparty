@@ -2,6 +2,11 @@ import { createGameEngine } from './gameEngine.js';
 import { mergeEngineRoom } from '../../platform/roomState.js';
 import GameRoom from './GameRoom.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
+import {
+  handleHostMessage,
+  handleGuestMessage,
+  onHostEngineReady,
+} from './protocol.js';
 
 function syncRoom(setRoom, engine) {
   setRoom?.((prev) =>
@@ -9,40 +14,14 @@ function syncRoom(setRoom, engine) {
   );
 }
 
-function handleHostMessage(msg, guestSocketId, ctx) {
-  const { engine, lobbyPlayersRef, setRoom } = ctx;
-  if (!engine) return false;
-
-  if (msg.type === 'yang-action') {
-    const player = lobbyPlayersRef.current.find((p) => p.id === guestSocketId);
-    engine.handleAction(guestSocketId, player?.name || '플레이어', msg.action, msg);
-    syncRoom(setRoom, engine);
-    return true;
-  }
-
-  if (msg.type === 'chat') {
-    const player = lobbyPlayersRef.current.find((p) => p.id === guestSocketId);
-    engine.handleChat(guestSocketId, player?.name || '플레이어', msg.text);
-    syncRoom(setRoom, engine);
-    return true;
-  }
-
-  return false;
-}
-
-function handleGuestMessage(msg, ctx) {
-  const { setRoom } = ctx;
-
-  if (msg.type === 'state') {
-    setRoom((prev) => (prev ? mergeEngineRoom(prev, msg.state) : msg.state));
-    return true;
-  }
-
-  return false;
-}
-
 function sendAction(ctx, action, payload = {}) {
-  const { isHost, myId, myName, gameEngineRef, guestPeerRef, setRoom } = ctx;
+  const { isServerMode, emitGameInput, isHost, myId, myName, gameEngineRef, guestPeerRef, setRoom } =
+    ctx;
+
+  if (isServerMode) {
+    emitGameInput({ type: 'yang-action', action, ...payload });
+    return;
+  }
 
   if (isHost) {
     const engine = gameEngineRef.current;
@@ -54,12 +33,51 @@ function sendAction(ctx, action, payload = {}) {
   }
 }
 
+function sendChatMessage(ctx, text) {
+  const { isServerMode, emitGameInput, isHost, myId, myName, gameEngineRef, guestPeerRef, setRoom } =
+    ctx;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  if (isServerMode) {
+    emitGameInput({ type: 'chat', text: trimmed });
+    return;
+  }
+
+  if (isHost) {
+    const engine = gameEngineRef.current;
+    if (!engine) return;
+    engine.handleChat(myId, myName, trimmed);
+    syncRoom(setRoom, engine);
+  } else {
+    guestPeerRef.current?.send({ type: 'chat', text: trimmed });
+  }
+}
+
+function sendTurnChat(ctx, text, mode) {
+  const { room } = ctx;
+  if (room?.status !== 'playing' || room.freeTalk) return;
+
+  const isActionPlayer = room.lastStand ? room.isLastStandPlayer : room.isMyTurn;
+  if (!isActionPlayer) return;
+
+  if (!room.lastStand) {
+    sendAction(ctx, 'select-mode', { mode });
+  }
+
+  sendChatMessage(ctx, text);
+}
+
 export function createHandlers(ctx) {
-  const { isHost, gameEngineRef, socketRef, roomCode, setRoom } = ctx;
+  const { isHost, isServerMode, emitGameInput, gameEngineRef, socketRef, roomCode, setRoom } = ctx;
 
   return {
     handleStartGame() {
       if (!isHost) return;
+      if (isServerMode) {
+        emitGameInput({ type: 'host-start-game' });
+        return;
+      }
       const engine = gameEngineRef.current;
       engine?.startAssigning();
       syncRoom(setRoom, engine);
@@ -75,6 +93,10 @@ export function createHandlers(ctx) {
 
     handleBeginPlaying() {
       if (!isHost) return;
+      if (isServerMode) {
+        emitGameInput({ type: 'host-begin-playing' });
+        return;
+      }
       const engine = gameEngineRef.current;
       engine?.beginPlaying(() => {
         socketRef.current?.emit('game-started', { code: roomCode });
@@ -86,12 +108,20 @@ export function createHandlers(ctx) {
       sendAction(ctx, 'select-mode', { mode });
     },
 
+    handleGiveUp() {
+      sendAction(ctx, 'give-up');
+    },
+
     handlePassTurn() {
       sendAction(ctx, 'pass-turn');
     },
 
-    handleGiveUp() {
-      sendAction(ctx, 'give-up');
+    handleSendQuestion(text) {
+      sendTurnChat(ctx, text, 'question');
+    },
+
+    handleSendAnswer(text) {
+      sendTurnChat(ctx, text, 'answer');
     },
   };
 }
@@ -105,9 +135,7 @@ export const yangsechan = {
   minPlayers: MIN_PLAYERS,
   RoomView: GameRoom,
   createEngine: createGameEngine,
-  onHostEngineReady(engine) {
-    engine.startAssigning();
-  },
+  onHostEngineReady,
   handleHostMessage,
   handleGuestMessage,
   createHandlers,

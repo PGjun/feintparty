@@ -1,4 +1,4 @@
-import { TURN_TIME } from './constants.js';
+import { TURN_TIME, ANSWER_TIME } from './constants.js';
 import { isAnswerCorrect } from './match.js';
 
 function shuffleDerangement(n) {
@@ -27,6 +27,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     turnPlayerIndex: 0,
     turnNumber: 1,
     turnMode: null,
+    turnPhase: 'action',
+    freeTalkTimeLeft: 0,
     answerPending: false,
     timeLeft: TURN_TIME,
     lastStand: false,
@@ -58,6 +60,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       turnPlayerIndex: state.turnPlayerIndex,
       turnNumber: state.turnNumber,
       turnMode: state.turnMode,
+      turnPhase: state.turnPhase,
+      freeTalkTimeLeft: state.freeTalkTimeLeft,
       answerPending: state.answerPending,
       timeLeft: state.timeLeft,
       lastStand: state.lastStand,
@@ -87,6 +91,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.turnPlayerIndex = 0;
     state.turnNumber = 1;
     state.turnMode = null;
+    state.turnPhase = 'action';
+    state.freeTalkTimeLeft = 0;
     state.answerPending = false;
     state.timeLeft = TURN_TIME;
     state.lastStand = false;
@@ -145,14 +151,17 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       turnPlayerName: current?.name ?? null,
       turnMode: state.turnMode,
       timeLeft: state.timeLeft,
+      freeTalk: state.turnPhase === 'freeTalk',
+      freeTalkTimeLeft: state.freeTalkTimeLeft,
       lastStand: state.lastStand,
       lastStandPlayerId: state.lastStandPlayerId,
       lastStandPlayerName: lastStandPlayer?.name ?? null,
       isLastStandPlayer,
       canGiveUp: isLastStandPlayer,
       isMyTurn,
-      canSelectMode: isMyTurn && state.turnMode === null && !state.lastStand,
-      canPassTurn: isMyTurn && state.turnMode === 'question' && !state.lastStand,
+      canSelectMode:
+        isMyTurn && state.turnPhase === 'action' && state.turnMode === null && !state.lastStand,
+      canPassTurn: isMyTurn && state.turnPhase === 'freeTalk' && !state.lastStand,
       allConfirmed:
         state.players.length >= 2 &&
         state.players.every((p) => state.submissions[p.id]?.confirmed),
@@ -182,6 +191,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     clearTimer();
     state.status = 'finished';
     state.turnMode = null;
+    state.turnPhase = 'action';
+    state.freeTalkTimeLeft = 0;
     state.answerPending = false;
     state.lastStand = false;
     state.lastStandPlayerId = null;
@@ -202,6 +213,19 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     broadcastState();
   }
 
+  function resolveAfterCorrectGuess() {
+    const remaining = getActivePlayers();
+    if (remaining.length === 0) {
+      finishGame();
+      return;
+    }
+    if (remaining.length === 1) {
+      startLastStand(remaining[0]);
+      return;
+    }
+    advanceTurn();
+  }
+
   function markCorrect(playerId, playerName, text) {
     const player = state.players.find((p) => p.id === playerId);
     if (!player || player.guessed) return;
@@ -217,18 +241,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       time: Date.now(),
     });
     addSystemMessage(`🎉 ${playerName}님 정답! (${rank}등)`);
-
-    const remaining = getActivePlayers();
-    if (remaining.length === 0) {
-      finishGame();
-      return;
-    }
-    if (remaining.length === 1) {
-      startLastStand(remaining[0]);
-      return;
-    }
-
-    advanceTurn();
+    startFreeTalk(resolveAfterCorrectGuess);
   }
 
   function startLastStand(lastPlayer) {
@@ -236,6 +249,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.lastStand = true;
     state.lastStandPlayerId = lastPlayer.id;
     state.turnMode = null;
+    state.turnPhase = 'action';
+    state.freeTalkTimeLeft = 0;
     state.answerPending = false;
     addSystemMessage(`🎯 ${lastPlayer.name}님의 마지막 기회!`);
     broadcastState();
@@ -276,6 +291,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
   function advanceTurn() {
     clearTimer();
     state.turnMode = null;
+    state.turnPhase = 'action';
+    state.freeTalkTimeLeft = 0;
     state.answerPending = false;
 
     if (state.players.length === 0) return;
@@ -313,12 +330,40 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     }
 
     state.turnMode = null;
+    state.turnPhase = 'action';
+    state.freeTalkTimeLeft = 0;
     state.answerPending = false;
     state.timeLeft = TURN_TIME;
     addSystemMessage(`${current.name}님의 턴입니다! (${state.turnNumber}번째 턴)`);
 
     startTurnTimer();
     broadcastState();
+  }
+
+  function startFreeTalk(onComplete) {
+    clearTimer();
+    state.turnPhase = 'freeTalk';
+    state.turnMode = null;
+    state.answerPending = false;
+    state.freeTalkTimeLeft = ANSWER_TIME;
+    addSystemMessage(`⏳ ${ANSWER_TIME}초 답변 시간!`);
+    resumeFreeTalkTimer(onComplete ?? (() => advanceTurn()));
+    broadcastState();
+  }
+
+  function resumeFreeTalkTimer(onComplete = () => advanceTurn()) {
+    clearTimer();
+    state.timer = setInterval(() => {
+      state.freeTalkTimeLeft--;
+      if (state.freeTalkTimeLeft <= 0) {
+        clearTimer();
+        state.turnPhase = 'action';
+        state.freeTalkTimeLeft = 0;
+        onComplete();
+        return;
+      }
+      broadcastState();
+    }, 1000);
   }
 
   function beginPlaying(onGameStarted) {
@@ -437,6 +482,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
         }
         case 'select-mode': {
           if (state.status !== 'playing' || state.lastStand) return;
+          if (state.turnPhase !== 'action') return;
           const current = getCurrentTurnPlayer();
           if (!current || current.id !== playerId || current.guessed) return;
           if (state.turnMode !== null) return;
@@ -449,7 +495,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
             addSystemMessage(`${playerName}님이 질문합니다.`);
           } else {
             addSystemMessage(
-              `${playerName}님이 정답을 말합니다. 이후 첫 메시지가 정답으로 처리됩니다.`
+              `${playerName}님이 정답을 말합니다. 채팅으로 정답을 입력하세요.`
             );
             state.answerPending = true;
           }
@@ -458,9 +504,9 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
         }
         case 'pass-turn': {
           if (state.status !== 'playing' || state.lastStand) return;
+          if (state.turnPhase !== 'freeTalk') return;
           const current = getCurrentTurnPlayer();
           if (!current || current.id !== playerId) return;
-          if (state.turnMode !== 'question') return;
           addSystemMessage(`${playerName}님이 턴을 넘깁니다.`);
           advanceTurn();
           break;
@@ -500,6 +546,17 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
         return;
       }
 
+      if (state.status === 'playing' && state.turnPhase === 'freeTalk') {
+        state.messages.push({
+          type: 'chat',
+          name: fromName,
+          text: trimmed,
+          time: Date.now(),
+        });
+        broadcastState();
+        return;
+      }
+
       if (
         state.status === 'playing' &&
         state.answerPending &&
@@ -519,8 +576,30 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           time: Date.now(),
         });
         addSystemMessage(`오답! "${trimmed}"`);
-        broadcastState();
-        advanceTurn();
+        startFreeTalk(() => advanceTurn());
+        return;
+      }
+
+      if (
+        state.status === 'playing' &&
+        state.turnMode === 'question' &&
+        getCurrentTurnPlayer()?.id === fromId
+      ) {
+        state.messages.push({
+          type: 'chat',
+          name: fromName,
+          text: trimmed,
+          time: Date.now(),
+        });
+        startFreeTalk(() => advanceTurn());
+        return;
+      }
+
+      if (
+        state.status === 'playing' &&
+        state.turnPhase === 'action' &&
+        getCurrentTurnPlayer()?.id === fromId
+      ) {
         return;
       }
 
@@ -537,6 +616,10 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       return getStateForPlayer(hostId);
     },
 
+    getPlayerState(playerId) {
+      return getStateForPlayer(playerId);
+    },
+
     exportState() {
       return exportSnapshot();
     },
@@ -551,6 +634,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       state.turnPlayerIndex = snapshot.turnPlayerIndex ?? 0;
       state.turnNumber = snapshot.turnNumber ?? 1;
       state.turnMode = snapshot.turnMode ?? null;
+      state.turnPhase = snapshot.turnPhase ?? 'action';
+      state.freeTalkTimeLeft = snapshot.freeTalkTimeLeft ?? 0;
       state.answerPending = snapshot.answerPending ?? false;
       state.timeLeft = snapshot.timeLeft ?? TURN_TIME;
       state.lastStand = snapshot.lastStand ?? false;
@@ -558,8 +643,12 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       state.messages = (snapshot.messages ?? []).slice(-50);
       state.timer = null;
 
-      if (state.status === 'playing' && !state.lastStand && state.timeLeft > 0) {
-        startTurnTimer();
+      if (state.status === 'playing' && !state.lastStand) {
+        if (state.turnPhase === 'freeTalk' && state.freeTalkTimeLeft > 0) {
+          resumeFreeTalkTimer();
+        } else if (state.turnPhase === 'action' && state.timeLeft > 0) {
+          startTurnTimer();
+        }
       }
       broadcastState();
     },

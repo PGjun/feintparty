@@ -110,7 +110,8 @@ export default function App() {
 
       {!room ? (
         <PartyLobby
-          onCreate={createRoom}
+          onCreateServer={(name) => createRoom(name, 'server')}
+          onCreateP2p={(name) => createRoom(name, 'p2p')}
           onJoin={joinRoom}
           defaultRoomCode={defaultRoomCode}
         />

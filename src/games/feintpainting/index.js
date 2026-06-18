@@ -2,77 +2,13 @@ import { createGameEngine } from './gameEngine.js';
 import { mergeEngineRoom } from '../../platform/roomState.js';
 import GameRoom from './GameRoom.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
+import {
+  handleHostMessage,
+  handleGuestMessage,
+  isFreeDrawStatus,
+} from './protocol.js';
 
-export function isFreeDrawStatus(status) {
-  return status === 'waiting' || status === 'finished';
-}
-
-function handleHostMessage(msg, guestSocketId, ctx) {
-  const { engine, canvasRef, hostPeers, lobbyPlayersRef, setRoom } = ctx;
-  if (!engine) return false;
-
-  if (msg.type === 'lobby-draw') {
-    if (!isFreeDrawStatus(engine.getHostState().status)) return true;
-    canvasRef.current?.drawStroke(msg.stroke);
-    hostPeers.broadcastExcept(guestSocketId, { type: 'draw', stroke: msg.stroke });
-    return true;
-  }
-
-  if (msg.type === 'game-draw') {
-    const hostState = engine.getHostState();
-    if (hostState.status !== 'playing') return true;
-    const drawer = hostState.players[hostState.drawerIndex];
-    if (drawer?.id !== guestSocketId) return true;
-    canvasRef.current?.drawStroke(msg.stroke);
-    hostPeers.broadcastExcept(guestSocketId, { type: 'draw', stroke: msg.stroke });
-    return true;
-  }
-
-  if (msg.type === 'lobby-clear') {
-    if (!isFreeDrawStatus(engine.getHostState().status)) return true;
-    canvasRef.current?.clear();
-    hostPeers.broadcast({ type: 'clear' });
-    return true;
-  }
-
-  if (msg.type === 'game-clear') {
-    const hostState = engine.getHostState();
-    if (hostState.status !== 'playing') return true;
-    const drawer = hostState.players[hostState.drawerIndex];
-    if (drawer?.id !== guestSocketId) return true;
-    engine.handleClearCanvas();
-    return true;
-  }
-
-  if (msg.type === 'chat') {
-    const player = lobbyPlayersRef.current.find((p) => p.id === guestSocketId);
-    engine.handleChat(guestSocketId, player?.name || '플레이어', msg.text);
-    setRoom?.((prev) =>
-      prev ? mergeEngineRoom(prev, engine.getHostState()) : engine.getHostState()
-    );
-    return true;
-  }
-
-  return false;
-}
-
-function handleGuestMessage(msg, ctx) {
-  const { setRoom, canvasRef } = ctx;
-
-  if (msg.type === 'state') {
-    setRoom((prev) => (prev ? mergeEngineRoom(prev, msg.state) : msg.state));
-    return true;
-  }
-  if (msg.type === 'draw') {
-    canvasRef.current?.drawStroke(msg.stroke);
-    return true;
-  }
-  if (msg.type === 'clear') {
-    canvasRef.current?.clear();
-    return true;
-  }
-  return false;
-}
+export { isFreeDrawStatus };
 
 export function createHandlers(ctx) {
   const {
@@ -80,6 +16,8 @@ export function createHandlers(ctx) {
     myId,
     myName,
     room,
+    isServerMode,
+    emitGameInput,
     gameEngineRef,
     hostPeersRef,
     guestPeerRef,
@@ -92,6 +30,10 @@ export function createHandlers(ctx) {
 
   return {
     handleStartGame(roundCount) {
+      if (isServerMode) {
+        emitGameInput({ type: 'host-start-game', roundCount });
+        return;
+      }
       const engine = gameEngineRef.current;
       engine?.startGame(roundCount);
       socketRef.current?.emit('game-started', { code: roomCode });
@@ -102,6 +44,10 @@ export function createHandlers(ctx) {
     },
 
     handleSendChat(text) {
+      if (isServerMode) {
+        emitGameInput({ type: 'chat', text });
+        return;
+      }
       if (isHost) {
         const engine = gameEngineRef.current;
         engine?.handleChat(myId, myName, text);
@@ -116,11 +62,19 @@ export function createHandlers(ctx) {
     handleDraw(stroke) {
       const status = gameEngineRef.current?.getHostState()?.status ?? room?.status;
       if (isFreeDrawStatus(status)) {
+        if (isServerMode) {
+          emitGameInput({ type: 'lobby-draw', stroke });
+          return;
+        }
         if (isHost) {
           hostPeersRef.current?.broadcast({ type: 'draw', stroke });
         } else {
           guestPeerRef.current?.send({ type: 'lobby-draw', stroke });
         }
+        return;
+      }
+      if (isServerMode) {
+        emitGameInput({ type: 'game-draw', stroke });
         return;
       }
       if (isHost) {
@@ -133,12 +87,20 @@ export function createHandlers(ctx) {
     handleClear() {
       const status = gameEngineRef.current?.getHostState()?.status ?? room?.status;
       if (isFreeDrawStatus(status)) {
+        if (isServerMode) {
+          emitGameInput({ type: 'lobby-clear' });
+          return;
+        }
         if (isHost) {
           canvasRef.current?.clear();
           hostPeersRef.current?.broadcast({ type: 'clear' });
         } else {
           guestPeerRef.current?.send({ type: 'lobby-clear' });
         }
+        return;
+      }
+      if (isServerMode) {
+        emitGameInput({ type: 'game-clear' });
         return;
       }
       if (isHost) {

@@ -554,12 +554,31 @@ input:focus {
   color: #fff;
 }
 
-.lobby-create-btn {
+.lobby-create-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   margin-top: 24px;
+}
+
+.lobby-create-btn {
+  width: 100%;
+  margin-top: 0;
   padding: 11px 20px;
+}
+
+.lobby-create-btn.subtle {
   background: var(--surface2);
   color: var(--text);
+}
+
+.lobby-mode-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.4;
 }
 
 .lobby .divider {
@@ -1120,6 +1139,18 @@ input:focus {
   cursor: pointer;
 }
 
+.yang-pass-btn-bar {
+  background: #ff6b35;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px;
+}
+
+.yang-pass-btn-bar:hover {
+  background: #e85a28;
+}
+
 .yang-turn-panel.last-stand {
   gap: 12px;
 }
@@ -1152,6 +1183,51 @@ input:focus {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.yang-turn-panel.free-talk {
+  border-color: var(--accent);
+}
+
+.yang-action-input {
+  border-top: 1px solid var(--surface2);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yang-action-input input {
+  width: 100%;
+}
+
+.yang-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.yang-action-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--bg);
+}
+
+.yang-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yang-action-btn.question {
+  background: var(--accent);
+}
+
+.yang-action-btn.answer {
+  background: var(--success);
 }
 
 .yang-memo {

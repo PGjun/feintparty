@@ -231,6 +231,10 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       return getStateForPlayer(hostId);
     },
 
+    getPlayerState(playerId) {
+      return getStateForPlayer(playerId);
+    },
+
     exportState() {
       return exportSnapshot();
     },

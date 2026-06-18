@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CopyIconButton } from '../../platform/components/CopyIconButton.jsx';
 import { ChatPanel } from '../../platform/components/ChatPanel.jsx';
 import { buildInviteLink } from '../../platform/url.js';
@@ -84,15 +84,21 @@ function WordCards({ room }) {
   );
 }
 
-function TurnPanel({ room, onSelectMode, onPassTurn }) {
+function TurnPanel({ room }) {
   if (room.status !== 'playing' || room.lastStand) return null;
 
-  const modeLabel =
-    room.turnMode === 'question'
-      ? '질문 중'
-      : room.turnMode === 'answer'
-        ? '정답 시도 중'
-        : null;
+  if (room.freeTalk) {
+    return (
+      <div className="yang-turn-panel free-talk">
+        <div className="yang-turn-info">
+          <span className="yang-turn-name">⏳ 답변 시간</span>
+          <span className={`timer ${room.freeTalkTimeLeft <= 10 ? 'warning' : ''}`}>
+            ⏱ {room.freeTalkTimeLeft}초
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="yang-turn-panel">
@@ -103,29 +109,52 @@ function TurnPanel({ room, onSelectMode, onPassTurn }) {
         <span className="yang-turn-meta">#{room.turnNumber}</span>
         <span className={`timer ${room.timeLeft <= 10 ? 'warning' : ''}`}>⏱ {room.timeLeft}초</span>
       </div>
+    </div>
+  );
+}
 
-      {modeLabel && <p className="yang-mode-label">{modeLabel}</p>}
+function YangActionInput({ onQuestion, onAnswer }) {
+  const [text, setText] = useState('');
+  const inputRef = useRef(null);
 
-      {room.canSelectMode && (
-        <div className="yang-turn-actions">
-          <button type="button" className="yang-mode-btn question" onClick={() => onSelectMode('question')}>
-            질문
-          </button>
-          <button type="button" className="yang-mode-btn answer" onClick={() => onSelectMode('answer')}>
-            정답
-          </button>
-        </div>
-      )}
+  const submit = (send) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    send(trimmed);
+    setText('');
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
-      {room.canPassTurn && (
-        <button type="button" className="yang-pass-btn" onClick={onPassTurn}>
-          턴 넘기기
+  return (
+    <div className="yang-action-input">
+      <input
+        ref={inputRef}
+        type="text"
+        value={text}
+        placeholder="질문 또는 정답을 입력하세요..."
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit(onQuestion);
+        }}
+      />
+      <div className="yang-action-buttons">
+        <button
+          type="button"
+          className="yang-action-btn question"
+          onClick={() => submit(onQuestion)}
+          disabled={!text.trim()}
+        >
+          질문
         </button>
-      )}
-
-      {room.isMyTurn && room.turnMode === 'answer' && (
-        <p className="yang-answer-hint">채팅으로 정답을 입력하세요. 첫 메시지만 정답으로 처리됩니다.</p>
-      )}
+        <button
+          type="button"
+          className="yang-action-btn answer"
+          onClick={() => submit(onAnswer)}
+          disabled={!text.trim()}
+        >
+          정답
+        </button>
+      </div>
     </div>
   );
 }
@@ -185,9 +214,10 @@ export default function GameRoom({
     handleStartGame,
     handleConfirmWord,
     handleBeginPlaying,
-    handleSelectMode,
-    handlePassTurn,
     handleGiveUp,
+    handlePassTurn,
+    handleSendQuestion,
+    handleSendAnswer,
   } = handlers;
 
   useEffect(() => {
@@ -207,11 +237,15 @@ export default function GameRoom({
   const isAssigningPhase = room.status === 'assigning' || room.status === 'waiting';
   const showInvite = isAssigningPhase || isFinished;
 
-  const chatPlaceholder = room.lastStand
-    ? '질문이나 정답을 입력하세요...'
-    : room.status === 'playing' && room.isMyTurn && room.turnMode === 'answer'
-      ? '정답을 입력하세요...'
-      : '메시지 입력...';
+  const useActionInput =
+    room.status === 'playing' &&
+    !room.freeTalk &&
+    (room.isMyTurn || room.isLastStandPlayer);
+
+  const showPassTurnBar =
+    room.status === 'playing' && room.freeTalk && room.canPassTurn;
+
+  const chatPlaceholder = '메시지 입력...';
 
   return (
     <div className="game game-yangsechan">
@@ -253,7 +287,7 @@ export default function GameRoom({
                 {room.lastStand ? (
                   <LastStandPanel room={room} onGiveUp={handleGiveUp} />
                 ) : (
-                  <TurnPanel room={room} onSelectMode={handleSelectMode} onPassTurn={handlePassTurn} />
+                  <TurnPanel room={room} />
                 )}
               </>
             )}
@@ -290,7 +324,24 @@ export default function GameRoom({
           players={room.players}
           onSend={onSendChat}
           placeholder={chatPlaceholder}
+          hideInput={useActionInput}
         />
+
+        {useActionInput && (
+          <YangActionInput
+            key={`${room.turnPlayerId}-${room.turnNumber}-${room.lastStand}`}
+            onQuestion={handleSendQuestion}
+            onAnswer={handleSendAnswer}
+          />
+        )}
+
+        {showPassTurnBar && (
+          <div className="yang-action-input">
+            <button type="button" className="yang-pass-btn yang-pass-btn-bar" onClick={handlePassTurn}>
+              턴 넘기기
+            </button>
+          </div>
+        )}
 
         {(isAssigningPhase || room.status === 'playing' || isFinished) && (
           <div className="yang-memo">

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getPlayerColor } from '../constants.js';
 
-export function ChatPanel({ messages, players, onSend, disabled, placeholder }) {
+export function ChatPanel({ messages, players, onSend, disabled, placeholder, hideInput }) {
   const [text, setText] = useState('');
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
@@ -52,27 +52,29 @@ export function ChatPanel({ messages, players, onSend, disabled, placeholder }) 
           </div>
         ))}
       </div>
-      <div className="chat-input-row">
-        <input
-          ref={inputRef}
-          placeholder={placeholder}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          disabled={disabled}
-          readOnly={disabled}
-          tabIndex={disabled ? -1 : 0}
-          inputMode={disabled ? 'none' : 'text'}
-        />
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={handleSend}
-          disabled={disabled || !text.trim()}
-        >
-          전송
-        </button>
-      </div>
+      {!hideInput && (
+        <div className="chat-input-row">
+          <input
+            ref={inputRef}
+            placeholder={placeholder}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            disabled={disabled}
+            readOnly={disabled}
+            tabIndex={disabled ? -1 : 0}
+            inputMode={disabled ? 'none' : 'text'}
+          />
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleSend}
+            disabled={disabled || !text.trim()}
+          >
+            전송
+          </button>
+        </div>
+      )}
     </div>
   );
 }

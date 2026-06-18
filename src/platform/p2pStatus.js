@@ -94,6 +94,20 @@ export function p2pStatusClassName(level) {
   return 'header-status warn';
 }
 
+/** @param {StatusBarDisplay} status */
+function formatServerHeaderStatus(status) {
+  const emojiMatch = status.text.match(/^(\p{Extended_Pictographic}+)\s*(.*)$/u);
+  if (emojiMatch) {
+    return {
+      level: status.level,
+      icon: emojiMatch[1],
+      text: emojiMatch[2],
+      useDot: false,
+    };
+  }
+  return { level: status.level, icon: null, text: status.text, useDot: true };
+}
+
 /**
  * @typedef {object} HeaderStatusDisplay
  * @property {'ok' | 'warn' | 'error'} level
@@ -118,6 +132,17 @@ export function resolveHeaderStatus({
   isHost,
   hideWhenOk = false,
 }) {
+  if (room?.mode === 'server') {
+    if (signalingStatus?.level === 'error' || signalingStatus?.level === 'warn') {
+      return formatServerHeaderStatus(signalingStatus);
+    }
+    if (hideWhenOk) return null;
+    const count = `${room.players.length}/${room.maxPlayers}명`;
+    return isHost
+      ? { level: 'ok', icon: '👑', text: count, useDot: false }
+      : { level: 'ok', icon: null, text: count, useDot: true };
+  }
+
   const resolved = resolveRoomStatusBar({
     signalingStatus,
     p2pStatus,

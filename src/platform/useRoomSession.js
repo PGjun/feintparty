@@ -72,6 +72,7 @@ export function useRoomSession() {
   const myNameRef = useRef('');
   const roomCodeRef = useRef(null);
   const gameIdRef = useRef(null);
+  const roomModeRef = useRef('p2p');
   const intentionalLeaveRef = useRef(false);
   const toastTimerRef = useRef(null);
   const userActionRef = useRef(null);
@@ -129,9 +130,19 @@ export function useRoomSession() {
     gameIdRef.current = room?.gameId ?? null;
   }, [room?.gameId]);
 
+  const emitGameInput = useCallback((msg) => {
+    const code = roomCodeRef.current;
+    if (!code) return;
+    socketRef.current?.emit('game-input', { code, msg });
+  }, []);
+
+  const isServerMode = room?.mode === 'server';
+
   const sessionCtx = useMemo(
     () => ({
       isHost,
+      isServerMode,
+      emitGameInput,
       myId,
       myName,
       room,
@@ -145,7 +156,7 @@ export function useRoomSession() {
       setRoom,
       setP2pStatus,
     }),
-    [isHost, myId, myName, room, roomCode]
+    [isHost, isServerMode, emitGameInput, myId, myName, room, roomCode]
   );
 
   const handlers = useMemo(
@@ -329,6 +340,7 @@ export function useRoomSession() {
 
       setRoomCode(data.code);
       roomCodeRef.current = data.code;
+      roomModeRef.current = data.mode ?? 'p2p';
       setIsHost(data.isHost);
       isHostRef.current = data.isHost;
       setSignalingStatus(null);
@@ -338,6 +350,7 @@ export function useRoomSession() {
 
       setRoom((prev) => ({
         code: data.code,
+        mode: data.mode ?? 'p2p',
         gameId: data.gameId,
         hostId: data.hostId,
         players: data.players.map((p) => {
@@ -346,10 +359,15 @@ export function useRoomSession() {
         }),
         maxPlayers: data.maxPlayers,
         status: data.status ?? prev?.status ?? 'waiting',
-        messages: isReconnect ? (prev?.messages ?? []) : [],
+        messages: data.messages ?? (isReconnect ? (prev?.messages ?? []) : []),
         myId: socket.id,
         isDrawer: false,
       }));
+
+      if (data.mode === 'server') {
+        setP2pStatus(null);
+        return;
+      }
 
       if (data.isHost) {
         setupHostPeers(socket, data);
@@ -370,6 +388,20 @@ export function useRoomSession() {
           prev
             ? {
                 ...mergeEngineRoom(prev, gameEngineRef.current.getHostState()),
+                gameId,
+                maxPlayers: game.maxPlayers,
+              }
+            : prev
+        );
+        setUrlParams({ gameId, roomCode: code });
+        return;
+      }
+
+      if (roomModeRef.current === 'server') {
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
                 gameId,
                 maxPlayers: game.maxPlayers,
               }
@@ -409,6 +441,28 @@ export function useRoomSession() {
   const handleHostMigration = useCallback(
     (socket, data) => {
       const amNewHost = socket.id === data.newHostId;
+
+      if (data.mode === 'server') {
+        setIsHost(amNewHost);
+        isHostRef.current = amNewHost;
+        lobbyPlayersRef.current = data.players;
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                mode: 'server',
+                hostId: data.newHostId,
+                gameId: data.gameId ?? prev.gameId,
+                players: data.players.map((p) => {
+                  const existing = prev.players.find((x) => x.name === p.name);
+                  return { ...existing, ...p, score: existing?.score ?? 0 };
+                }),
+                status: data.status ?? prev.status,
+              }
+            : prev
+        );
+        return;
+      }
 
       teardownPeers();
       gameEngineRef.current?.destroy();
@@ -499,6 +553,22 @@ export function useRoomSession() {
       setSignalingStatus({ level: 'error', text: '🔴 서버 연결 실패' });
     });
 
+    socket.on('lobby-chat', ({ message }) => {
+      setRoom((prev) =>
+        prev ? { ...prev, messages: appendMessage(prev.messages, message) } : prev
+      );
+    });
+
+    socket.on('game-state', (state) => {
+      setRoom((prev) => (prev ? mergeEngineRoom(prev, state) : state));
+    });
+
+    socket.on('game-event', (msg) => {
+      const game = gameIdRef.current ? getGame(gameIdRef.current) : null;
+      if (!game) return;
+      game.handleGuestMessage(msg, { setRoom, canvasRef });
+    });
+
     socket.on('room-joined', (data) => {
       userActionRef.current = null;
       dismissToast();
@@ -549,7 +619,7 @@ export function useRoomSession() {
             }
           : prev
       );
-      if (hostPeersRef.current) {
+      if (hostPeersRef.current && roomModeRef.current !== 'server') {
         gameEngineRef.current?.setPlayers(data.players);
         data.players.forEach((p) => {
           if (p.id !== socket.id) {
@@ -683,6 +753,7 @@ export function useRoomSession() {
   }, [isHost]);
 
   useEffect(() => {
+    if (roomModeRef.current === 'server') return;
     if (!isHost || !gameEngineRef.current) return;
     const interval = setInterval(() => {
       setRoom((prev) =>
@@ -690,12 +761,23 @@ export function useRoomSession() {
       );
     }, 500);
     return () => clearInterval(interval);
-  }, [isHost, room?.status, room?.gameId]);
+  }, [isHost, room?.status, room?.gameId, room?.mode]);
 
   const sendChat = useCallback(
     (text) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+
+      if (roomModeRef.current === 'server') {
+        const code = roomCodeRef.current;
+        if (!code) return;
+        if (gameIdRef.current) {
+          socketRef.current?.emit('game-input', { code, msg: { type: 'chat', text: trimmed } });
+        } else {
+          socketRef.current?.emit('lobby-chat', { code, text: trimmed });
+        }
+        return;
+      }
 
       if (gameEngineRef.current) {
         if (isHostRef.current) {
@@ -727,14 +809,14 @@ export function useRoomSession() {
     [myId]
   );
 
-  const createRoom = useCallback((name) => {
+  const createRoom = useCallback((name, mode = 'p2p') => {
     myNameRef.current = name;
     setMyName(name);
     userActionRef.current = 'create';
     dismissToast();
     setP2pStatus(null);
     setSignalingStatus(null);
-    socketRef.current?.emit('create-room', { name });
+    socketRef.current?.emit('create-room', { name, mode });
   }, [dismissToast]);
 
   const joinRoom = useCallback((code, name) => {
