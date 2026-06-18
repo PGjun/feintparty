@@ -223,7 +223,6 @@ function GameRoom({
     !isNaN(parsedRounds) &&
     parsedRounds >= 1 &&
     parsedRounds <= 50;
-  const chatDisabled = room.status === 'round-end';
   const chatPlaceholder =
     room.status === 'playing' && !room.isDrawer
       ? '정답을 입력하세요...'
@@ -334,7 +333,6 @@ function GameRoom({
           messages={room.messages || []}
           players={room.players}
           onSend={onSendChat}
-          disabled={chatDisabled}
           placeholder={chatPlaceholder}
         />
       </div>
