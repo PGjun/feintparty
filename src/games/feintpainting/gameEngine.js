@@ -120,6 +120,10 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       broadcastState();
     },
 
+    setInitialMessages(messages) {
+      state.messages = messages.slice(-50);
+    },
+
     startGame(maxRounds) {
       clearInterval(state.timer);
       const rounds = Math.min(MAX_ROUNDS, Math.max(MIN_ROUNDS, parseInt(maxRounds, 10) || DEFAULT_ROUNDS));

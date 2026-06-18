@@ -186,6 +186,7 @@ input:focus {
   border-radius: 16px;
   padding: 32px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  position: relative;
 }
 
 .lobby h2 {
@@ -198,6 +199,195 @@ input:focus {
   color: var(--muted);
   font-size: 13px;
   margin-bottom: 16px;
+}
+
+.lobby-back {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  transform: none;
+}
+
+.lobby-back:hover,
+.lobby-back:active {
+  transform: none;
+}
+
+.header-party-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.party-room {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.party-room-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.party-room-sidebar {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.party-room-sidebar .game-picker {
+  flex-shrink: 0;
+}
+
+.party-room-sidebar .chat-box {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.party-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.party-section-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.party-players {
+  margin-top: 4px;
+}
+
+.party-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  text-align: center;
+}
+
+.party-waiting-text {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .party-room {
+    grid-template-columns: 1fr;
+  }
+}
+
+.game-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text);
+  text-align: left;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.game-card:hover {
+  background: var(--bg);
+  transform: translateY(-1px);
+}
+
+.game-card.disabled,
+.game-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.game-card.disabled:hover,
+.game-card:disabled:hover {
+  background: var(--surface2);
+  transform: none;
+}
+
+.game-card-emoji {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.game-card-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.game-card-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.game-card-meta {
+  font-size: 12px;
+  color: var(--success);
+  margin-top: 4px;
+}
+
+.game-lobby-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.game-lobby-emoji {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.game-lobby-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.header-game-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.header-game-emoji {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.header-game-name {
+  color: var(--text);
+}
+
+.lobby .divider {
+  text-align: center;
+  color: var(--muted);
+  margin: 16px 0;
+  font-size: 13px;
 }
 
 .p2p-status {
@@ -566,6 +756,311 @@ input:focus {
 
 .btn-copy-icon:active {
   transform: none;
+}
+
+/* ── 양세찬 게임 ── */
+
+.game-yangsechan .game-main {
+  min-height: 0;
+}
+
+.yang-players-bar {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.player-chip.guessed {
+  opacity: 0.65;
+}
+
+.yang-assigning {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yang-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.yang-section-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.yang-word-form {
+  display: flex;
+  gap: 8px;
+}
+
+.yang-word-form input {
+  flex: 1;
+}
+
+.yang-confirm-btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.yang-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yang-wait-host {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.yang-confirmed-msg {
+  font-size: 14px;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.yang-confirm-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.yang-confirm-list li {
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-radius: 8px;
+}
+
+.yang-confirm-list li.done {
+  color: var(--success);
+}
+
+.yang-word-cards {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.yang-word-card {
+  flex: 0 0 auto;
+  min-width: 120px;
+  max-width: 160px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.yang-word-card.mine {
+  border: 2px dashed var(--muted);
+}
+
+.yang-word-card.mine.revealed.correct {
+  border: 2px solid var(--success);
+}
+
+.yang-word-card.mine.revealed.last {
+  border: 2px solid #f59e0b;
+}
+
+.yang-word-card.mine.correct .yang-word-value {
+  color: var(--success);
+}
+
+.yang-word-card.mine.last .yang-word-value {
+  color: #f59e0b;
+}
+
+.yang-finished {
+  padding: 16px 18px;
+}
+
+.yang-finished .winner-text {
+  font-size: 18px;
+  margin-bottom: 0;
+}
+
+.yang-finished .yang-rank-list {
+  margin-top: 10px;
+}
+
+.yang-word-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.yang-word-value {
+  font-size: 16px;
+  font-weight: 700;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.yang-word-value.hidden {
+  color: var(--muted);
+  letter-spacing: 4px;
+}
+
+.yang-turn-panel {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yang-turn-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.yang-turn-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.yang-turn-meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.yang-mode-label {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.yang-turn-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.yang-mode-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--bg);
+}
+
+.yang-mode-btn.question {
+  background: var(--accent);
+}
+
+.yang-mode-btn.answer {
+  background: var(--success);
+}
+
+.yang-pass-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.yang-turn-panel.last-stand {
+  gap: 12px;
+}
+
+.yang-laststand-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.yang-laststand-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.yang-giveup-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: #f59e0b;
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.yang-answer-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.yang-memo {
+  display: flex;
+  flex-direction: column;
+}
+
+.yang-memo-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 80px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--surface2);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  font-family: inherit;
+}
+
+.yang-finished .yang-rank-list {
+  list-style: none;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .yang-word-card {
+    min-width: 100px;
+  }
+
+  .yang-turn-actions {
+    flex-direction: row;
+  }
 }
 
 .chat-box {

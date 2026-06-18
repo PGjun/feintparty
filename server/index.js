@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, '..', 'dist');
 const PORT = process.env.PORT || 3001;
-const MAX_PLAYERS = 6;
+const DEFAULT_MAX_PLAYERS = 6;
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,16 +30,16 @@ function generateRoomCode() {
 function getLobbyState(room) {
   return {
     code: room.code,
+    gameId: room.gameId,
     players: room.players.map((p) => ({ id: p.id, name: p.name, score: 0 })),
-    maxPlayers: MAX_PLAYERS,
+    maxPlayers: room.maxPlayers,
     status: 'waiting',
     hostId: room.hostId,
   };
 }
 
 function broadcastLobby(room) {
-  const state = getLobbyState(room);
-  io.to(room.code).emit('lobby-update', state);
+  io.to(room.code).emit('lobby-update', getLobbyState(room));
 }
 
 app.get('/api/health', (_req, res) => {
@@ -55,8 +55,10 @@ io.on('connection', (socket) => {
 
     const room = {
       code,
+      gameId: null,
       hostId: socket.id,
       players: [{ id: socket.id, name }],
+      maxPlayers: DEFAULT_MAX_PLAYERS,
       status: 'waiting',
     };
 
@@ -78,8 +80,8 @@ io.on('connection', (socket) => {
       socket.emit('error', '방을 찾을 수 없어요.');
       return;
     }
-    if (room.players.length >= MAX_PLAYERS) {
-      socket.emit('error', `방이 가득 찼어요. (최대 ${MAX_PLAYERS}명)`);
+    if (room.players.length >= room.maxPlayers) {
+      socket.emit('error', `방이 가득 찼어요. (최대 ${room.maxPlayers}명)`);
       return;
     }
     if (room.status !== 'waiting') {
@@ -106,6 +108,22 @@ io.on('connection', (socket) => {
     io.to(room.hostId).emit('peer-joined', { socketId: socket.id, name });
   });
 
+  socket.on('select-game', ({ code, gameId, minPlayers }) => {
+    const room = rooms.get(code?.toUpperCase());
+    if (!room || room.hostId !== socket.id) return;
+    if (room.status !== 'waiting' || room.gameId) return;
+    if (!gameId) return;
+
+    const required = minPlayers || 2;
+    if (room.players.length < required) {
+      socket.emit('error', `최소 ${required}명이 필요해요.`);
+      return;
+    }
+
+    room.gameId = gameId;
+    io.to(room.code).emit('game-selected', { gameId });
+  });
+
   socket.on('webrtc-signal', ({ to, signal }) => {
     io.to(to).emit('webrtc-signal', { from: socket.id, signal });
   });
@@ -120,6 +138,16 @@ io.on('connection', (socket) => {
     const room = rooms.get(code?.toUpperCase());
     if (!room || room.hostId !== socket.id) return;
     room.status = 'waiting';
+  });
+
+  socket.on('leave-game', ({ code }) => {
+    const room = rooms.get(code?.toUpperCase());
+    if (!room || room.hostId !== socket.id) return;
+
+    room.gameId = null;
+    room.status = 'waiting';
+    io.to(room.code).emit('return-to-lobby');
+    broadcastLobby(room);
   });
 
   socket.on('disconnect', () => {
@@ -153,6 +181,6 @@ if (existsSync(distPath)) {
 }
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🎨 Feint Painting 신호 서버: http://localhost:${PORT}`);
-  console.log('   게임 처리는 방장 기기(WebRTC P2P)에서 실행됩니다.');
+  console.log(`🎮 Feint Party 신호 서버: http://localhost:${PORT}`);
+  console.log('   게임 로직은 방장 기기(WebRTC P2P)에서 실행됩니다.');
 });

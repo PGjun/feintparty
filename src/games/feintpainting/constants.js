@@ -1,33 +1,9 @@
 export const MAX_PLAYERS = 6;
+export const MIN_PLAYERS = 2;
 export const MIN_ROUNDS = 1;
 export const MAX_ROUNDS = 50;
 export const DEFAULT_ROUNDS = 5;
 export const ROUND_TIME = 80;
-
-export const PLAYER_COLORS = [
-  '#ff6b9d',
-  '#64ffda',
-  '#ffd166',
-  '#c084fc',
-  '#4ade80',
-  '#fb923c',
-];
-
-export function getPlayerColorByIndex(index) {
-  return PLAYER_COLORS[((index % PLAYER_COLORS.length) + PLAYER_COLORS.length) % PLAYER_COLORS.length];
-}
-
-export function getPlayerColor(players, name) {
-  const index = players.findIndex((p) => p.name === name);
-  return getPlayerColorByIndex(index === -1 ? 0 : index);
-}
-
-export const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-};
 
 export const WORDS = [
   '고양이', '강아지', '햄버거', '피자', '비행기', '자동차', '기타', '해변',
