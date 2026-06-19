@@ -10,5 +10,5 @@ export function isAnswerCorrect(guess, target) {
   const g = stripPunct(normalizeForMatch(guess));
   const w = stripPunct(normalizeForMatch(target));
   if (!w || !g) return false;
-  return g.includes(w) || w.includes(g);
+  return g === w;
 }

@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { GAMES } from './games/registry.js';
 import { HeaderStatus } from './platform/components/HeaderStatus.jsx';
 import { Toast } from './platform/components/Toast.jsx';
-import { PartyLobby } from './platform/PartyLobby.jsx';
-import { PartyRoom } from './platform/PartyRoom.jsx';
+import { EntryScreen } from './platform/EntryScreen.jsx';
+import { WaitingRoom } from './platform/WaitingRoom.jsx';
 import { useRoomSession } from './platform/useRoomSession.js';
-import { confirmLeaveRoom, confirmReturnToLobby, parseRoomUrl } from './platform/url.js';
+import { confirmLeaveRoom, confirmReturnToWaitingRoom, parseRoomUrl } from './platform/url.js';
 
 export default function App() {
   const [defaultRoomCode] = useState(() => parseRoomUrl().roomCode);
@@ -21,33 +21,33 @@ export default function App() {
     createRoom,
     joinRoom,
     selectGame,
-    returnToLobby,
+    returnToWaitingRoom,
     leaveRoom,
     sendChat,
     handlers,
   } = useRoomSession();
 
   const handleBack = useCallback(() => {
-    const inPartyLobby = room && !room.gameId;
+    const inWaitingRoom = room && !room.gameId;
 
-    if (inPartyLobby) {
+    if (inWaitingRoom) {
       if (!confirmLeaveRoom()) return;
       leaveRoom();
       return;
     }
 
     if (isHost) {
-      if (!confirmReturnToLobby()) return;
-      returnToLobby();
+      if (!confirmReturnToWaitingRoom()) return;
+      returnToWaitingRoom();
       return;
     }
 
     if (!confirmLeaveRoom()) return;
     leaveRoom();
-  }, [room, isHost, leaveRoom, returnToLobby]);
+  }, [room, isHost, leaveRoom, returnToWaitingRoom]);
 
-  const inPartyLobby = room && !room.gameId;
-  const backLabel = inPartyLobby
+  const inWaitingRoom = room && !room.gameId;
+  const backLabel = inWaitingRoom
     ? '방 나가기'
     : isHost
       ? '대기방으로'
@@ -69,7 +69,7 @@ export default function App() {
   const hideHeaderStatusWhenOk = Boolean(room?.gameId && room?.status === 'playing');
 
   return (
-    <div className={`app${!room ? ' lobby-page' : ''}`}>
+    <div className={`app${!room ? ' entry-page' : ''}`}>
       {room && (
         <header className="header header-room">
           <button
@@ -107,13 +107,13 @@ export default function App() {
       )}
 
       {!room ? (
-        <PartyLobby
+        <EntryScreen
           onCreateRoom={createRoom}
           onJoin={joinRoom}
           defaultRoomCode={defaultRoomCode}
         />
-      ) : inPartyLobby ? (
-        <PartyRoom
+      ) : inWaitingRoom ? (
+        <WaitingRoom
           room={room}
           isHost={isHost}
           games={GAMES}

@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { GameHost } from './gameHost.js';
+import { getServerGame } from './gameRegistry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.join(__dirname, '..', 'dist');
@@ -39,11 +40,11 @@ function createRoom(code, hostId, hostName) {
     maxPlayers: DEFAULT_MAX_PLAYERS,
     status: 'waiting',
     graceSlots: new Map(),
-    lobbyMessages: [],
+    roomMessages: [],
   };
 }
 
-function getLobbyState(room) {
+function getRoomState(room) {
   return {
     code: room.code,
     gameId: room.gameId,
@@ -54,8 +55,8 @@ function getLobbyState(room) {
   };
 }
 
-function broadcastLobby(room) {
-  io.to(room.code).emit('lobby-update', getLobbyState(room));
+function broadcastRoom(room) {
+  io.to(room.code).emit('room-update', getRoomState(room));
 }
 
 function syncServerPlayers(room) {
@@ -108,8 +109,8 @@ function emitRoomJoined(socket, room, { isHost, isReconnect = false }) {
     hostId: room.hostId,
     gameId: room.gameId,
     status: room.status,
-    messages: room.lobbyMessages ?? [],
-    ...getLobbyState(room),
+    messages: room.roomMessages ?? [],
+    ...getRoomState(room),
   });
 
   if (room.gameId) {
@@ -130,11 +131,11 @@ function tryMigrateHost(room, code, oldHostId) {
   syncServerPlayers(room);
 
   io.to(code).emit('host-migrated', {
-    ...getLobbyState(room),
+    ...getRoomState(room),
     newHostId: room.hostId,
     newHostName: room.players[0].name,
   });
-  broadcastLobby(room);
+  broadcastRoom(room);
   return true;
 }
 
@@ -169,12 +170,25 @@ function handlePlayerReconnect(socket, room, name, grace) {
     gameHost.replacePlayerId(room, previousSocketId, socket.id);
   }
   syncServerPlayers(room);
-  broadcastLobby(room);
+  broadcastRoom(room);
 }
 
-function appendLobbyMessage(room, message) {
-  room.lobbyMessages = [...(room.lobbyMessages ?? []), message].slice(-50);
-  io.to(room.code).emit('lobby-chat', { message });
+function scheduleHostMigration(room, code, oldHostId) {
+  setTimeout(() => {
+    const currentRoom = rooms.get(code?.toUpperCase());
+    if (!currentRoom) return;
+    if (currentRoom.hostId !== oldHostId) return;
+    if (currentRoom.players.length === 0) return;
+
+    if (!tryMigrateHost(currentRoom, code, oldHostId)) {
+      io.to(code).emit('room-closed', '방이 종료됩니다.');
+    }
+  }, RECONNECT_GRACE_MS);
+}
+
+function appendRoomMessage(room, message) {
+  room.roomMessages = [...(room.roomMessages ?? []), message].slice(-50);
+  io.to(room.code).emit('room-chat', { message });
 }
 
 app.get('/api/health', (_req, res) => {
@@ -221,7 +235,7 @@ io.on('connection', (socket) => {
       socket.emit('error', `방이 가득 찼어요. (최대 ${room.maxPlayers}명)`);
       return;
     }
-    if (room.status !== 'waiting') {
+    if (room.gameId) {
       socket.emit('error', '이미 게임이 진행 중이에요.');
       return;
     }
@@ -236,7 +250,7 @@ io.on('connection', (socket) => {
     socket.roomCode = room.code;
 
     emitRoomJoined(socket, room, { isHost: false });
-    broadcastLobby(room);
+    broadcastRoom(room);
     syncServerPlayers(room);
   });
 
@@ -281,11 +295,16 @@ io.on('connection', (socket) => {
     }
 
     room.gameId = gameId;
+    const serverGame = getServerGame(gameId);
+    if (serverGame?.maxPlayers) {
+      room.maxPlayers = serverGame.maxPlayers;
+    }
     io.to(room.code).emit('game-selected', { gameId });
-    gameHost.initEngine(room, { messages: room.lobbyMessages ?? [] });
+    gameHost.initEngine(room, { messages: room.roomMessages ?? [] });
+    room.players.forEach((p) => gameHost.sendPlayerState(room, p.id));
   });
 
-  socket.on('lobby-chat', ({ code, text }) => {
+  socket.on('room-chat', ({ code, text }) => {
     const roomCode = (code || socket.roomCode)?.toUpperCase();
     const room = roomCode ? rooms.get(roomCode) : null;
     if (!room) return;
@@ -302,7 +321,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    appendLobbyMessage(room, {
+    appendRoomMessage(room, {
       type: 'chat',
       name: player.name,
       text: trimmed,
@@ -325,8 +344,38 @@ io.on('connection', (socket) => {
     room.gameId = null;
     room.status = 'waiting';
     gameHost.destroyEngine(room.code);
-    io.to(room.code).emit('return-to-lobby');
-    broadcastLobby(room);
+    io.to(room.code).emit('return-to-waiting');
+    broadcastRoom(room);
+  });
+
+  socket.on('leave-room', ({ code }) => {
+    const roomCode = (code || socket.roomCode)?.toUpperCase();
+    const room = roomCode ? rooms.get(roomCode) : null;
+    if (!room) return;
+
+    const player = room.players.find((p) => p.id === socket.id);
+    if (!player) return;
+
+    const wasHost = socket.id === room.hostId;
+    const oldHostId = socket.id;
+
+    room.graceSlots.delete(player.name);
+    room.players = room.players.filter((p) => p.id !== socket.id);
+    leaveSocketRoom(socket);
+
+    if (wasHost && room.players.length > 0) {
+      tryMigrateHost(room, roomCode, oldHostId);
+      return;
+    }
+
+    if (room.players.length === 0) {
+      gameHost.destroyEngine(roomCode);
+      rooms.delete(roomCode);
+      return;
+    }
+
+    syncServerPlayers(room);
+    broadcastRoom(room);
   });
 
   socket.on('disconnect', () => {
@@ -347,9 +396,9 @@ io.on('connection', (socket) => {
       if (room.players.length === 0) {
         return;
       }
-      if (!tryMigrateHost(room, code, oldHostId)) {
-        io.to(code).emit('room-closed', '방이 종료됩니다.');
-      }
+      scheduleHostMigration(room, code, oldHostId);
+      syncServerPlayers(room);
+      broadcastRoom(room);
       return;
     }
 
@@ -360,7 +409,7 @@ io.on('connection', (socket) => {
     }
 
     syncServerPlayers(room);
-    broadcastLobby(room);
+    broadcastRoom(room);
   });
 });
 

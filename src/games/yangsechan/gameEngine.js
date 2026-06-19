@@ -237,6 +237,13 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       time: Date.now(),
     });
     addSystemMessage(`🎉 ${playerName}님 정답! (${rank}등)`);
+
+    const remaining = getActivePlayers();
+    if (remaining.length <= 1) {
+      resolveAfterCorrectGuess();
+      return;
+    }
+
     startFreeTalk(resolveAfterCorrectGuess);
   }
 
@@ -248,7 +255,6 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.turnPhase = 'action';
     state.freeTalkTimeLeft = 0;
     state.answerPending = false;
-    addSystemMessage(`🎯 ${lastPlayer.name}님의 마지막 기회!`);
     broadcastState();
   }
 
@@ -490,12 +496,52 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           if (mode === 'question') {
             addSystemMessage(`${playerName}님이 질문합니다.`);
           } else {
-            addSystemMessage(
-              `${playerName}님이 정답을 말합니다. 채팅으로 정답을 입력하세요.`
-            );
+            addSystemMessage(`${playerName}님이 정답을 말합니다.`);
             state.answerPending = true;
           }
           broadcastState();
+          break;
+        }
+        case 'turn-chat': {
+          if (state.status !== 'playing' || state.lastStand) return;
+          if (state.turnPhase !== 'action') return;
+          const current = getCurrentTurnPlayer();
+          if (!current || current.id !== playerId || current.guessed) return;
+          if (state.turnMode !== null) return;
+
+          const mode = payload.mode;
+          const text = (payload.text ?? '').trim();
+          if (!text) return;
+          if (mode !== 'question' && mode !== 'answer') return;
+
+          if (mode === 'question') {
+            state.turnMode = 'question';
+            addSystemMessage(`${playerName}님이 질문합니다.`);
+            state.messages.push({
+              type: 'chat',
+              name: playerName,
+              text,
+              time: Date.now(),
+            });
+            startFreeTalk(() => advanceTurn());
+            return;
+          }
+
+          addSystemMessage(`${playerName}님이 정답을 말합니다.`);
+          const targetWord = state.assignedWords[playerId];
+          if (targetWord && isAnswerCorrect(text, targetWord)) {
+            markCorrect(playerId, playerName, text);
+            return;
+          }
+
+          state.messages.push({
+            type: 'guess',
+            name: playerName,
+            text,
+            time: Date.now(),
+          });
+          addSystemMessage(`오답! "${text}"`);
+          startFreeTalk(() => advanceTurn());
           break;
         }
         case 'pass-turn': {
@@ -641,7 +687,11 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
 
       if (state.status === 'playing' && !state.lastStand) {
         if (state.turnPhase === 'freeTalk' && state.freeTalkTimeLeft > 0) {
-          resumeFreeTalkTimer();
+          if (getActivePlayers().length <= 1) {
+            resolveAfterCorrectGuess();
+          } else {
+            resumeFreeTalkTimer();
+          }
         } else if (state.turnPhase === 'action' && state.timeLeft > 0) {
           startTurnTimer();
         }

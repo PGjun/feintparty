@@ -9,8 +9,8 @@ export function GameLobby({ game, onCreate, onJoin, onBack, error, defaultRoomCo
   }, [defaultRoomCode]);
 
   return (
-    <div className="lobby">
-      <button type="button" className="btn-back lobby-back" onClick={onBack} aria-label="게임 선택">
+    <div className="entry">
+      <button type="button" className="btn-back entry-back" onClick={onBack} aria-label="게임 선택">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M15 18l-6-6 6-6"
@@ -26,7 +26,7 @@ export function GameLobby({ game, onCreate, onJoin, onBack, error, defaultRoomCo
         <span className="game-lobby-emoji">{game.emoji}</span>
         <h2 className="game-lobby-title">{game.name}</h2>
       </div>
-      <p className="lobby-desc">{game.description}</p>
+      <p className="entry-desc">{game.description}</p>
       {error && <div className="error-msg">{error}</div>}
 
       <input

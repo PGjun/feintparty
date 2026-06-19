@@ -82,6 +82,12 @@ export default function GameRoom({
           )}
         </div>
 
+        {room.status === 'finished' && winners.length > 0 && (
+          <div className="finished-banner">
+            <p className="winner-text">🎉 {formatWinnerMessage(winners)}</p>
+          </div>
+        )}
+
         <DrawingCanvas
           ref={canvasRef}
           isDrawer={canDrawFree}
@@ -103,12 +109,6 @@ export default function GameRoom({
               <span className="invite-value link">{inviteLink}</span>
               <CopyIconButton text={inviteLink} title="링크 복사" />
             </div>
-          </div>
-        )}
-
-        {room.status === 'finished' && winners.length > 0 && (
-          <div className="finished-banner">
-            <p className="winner-text">🎉 {formatWinnerMessage(winners)}</p>
           </div>
         )}
 

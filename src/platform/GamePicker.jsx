@@ -2,9 +2,9 @@ import { PlatformLogo } from './components/PlatformLogo.jsx';
 
 export function GamePicker({ games, onSelect }) {
   return (
-    <div className="lobby">
+    <div className="entry">
       <PlatformLogo />
-      <p className="lobby-desc">친구와 함께 즐기는 멀티플레이 게임</p>
+      <p className="entry-desc">친구와 함께 즐기는 멀티플레이 게임</p>
       <div className="game-picker">
         {games.map((game) => (
           <button

@@ -26,6 +26,6 @@ export function confirmLeaveRoom() {
   return window.confirm('방에서 나가시겠습니까?');
 }
 
-export function confirmReturnToLobby() {
+export function confirmReturnToWaitingRoom() {
   return window.confirm('게임을 나가고 대기방으로 돌아가시겠습니까?');
 }

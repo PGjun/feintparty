@@ -11,6 +11,12 @@ import {
 } from '../src/games/yangsechan/protocol.js';
 import { MAX_PLAYERS as YANG_MAX, MIN_PLAYERS as YANG_MIN } from '../src/games/yangsechan/constants.js';
 
+import { createGameEngine as createAirhockeyEngine } from '../src/games/airhockey/gameEngine.js';
+import {
+  handleHostMessage as airhockeyHostMessage,
+} from '../src/games/airhockey/protocol.js';
+import { MAX_PLAYERS as AIR_MAX, MIN_PLAYERS as AIR_MIN } from '../src/games/airhockey/constants.js';
+
 export const SERVER_GAMES = {
   feintpainting: {
     id: 'feintpainting',
@@ -27,6 +33,14 @@ export const SERVER_GAMES = {
     createEngine: createYangEngine,
     handleHostMessage: yangHostMessage,
     onHostEngineReady: yangEngineReady,
+  },
+  airhockey: {
+    id: 'airhockey',
+    maxPlayers: AIR_MAX,
+    minPlayers: AIR_MIN,
+    createEngine: createAirhockeyEngine,
+    handleHostMessage: airhockeyHostMessage,
+    onHostEngineReady: null,
   },
 };
 

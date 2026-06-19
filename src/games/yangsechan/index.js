@@ -24,11 +24,15 @@ function sendTurnChat(ctx, text, mode) {
   const isActionPlayer = room.lastStand ? room.isLastStandPlayer : room.isMyTurn;
   if (!isActionPlayer) return;
 
-  if (!room.lastStand) {
-    sendAction(ctx, 'select-mode', { mode });
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  if (room.lastStand) {
+    sendChatMessage(ctx, trimmed);
+    return;
   }
 
-  sendChatMessage(ctx, text);
+  sendAction(ctx, 'turn-chat', { mode, text: trimmed });
 }
 
 export function createHandlers(ctx) {

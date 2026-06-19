@@ -1,0 +1,51 @@
+---
+description: Feint Party 화면·상태·코드 용어 (작업 시 이 표준명 사용)
+alwaysApply: true
+---
+
+# Feint Party 용어
+
+## 화면 3단계
+
+`lobby` 단독 사용 금지.
+
+| # | 표준 용어 | 컴포넌트 | CSS | 조건 |
+|---|-----------|----------|-----|------|
+| 1 | **입장 화면** | `EntryScreen` | `.entry`, `.entry-page` | `!room` |
+| 2 | **대기방** | `WaitingRoom` | `.waiting-room` | `room && !room.gameId` (`inWaitingRoom`) |
+| 3 | **게임방** | `*/GameRoom.jsx` | `.game` | `room.gameId` 있음 |
+
+```
+입장 화면  ──방 만들기/참가──▶  대기방  ──게임 선택──▶  게임방
+```
+
+## 액션 · 소켓
+
+| 표준 용어 | 코드 |
+|-----------|------|
+| 방 만들기 / 참가 | `create-room`, `join-room` |
+| 방 나가기 → 입장 화면 | `leaveRoom()`, `leave-room` |
+| 대기방으로 (게임방→대기방) | `returnToWaitingRoom()`, `leave-game`, `return-to-waiting` |
+| 대기방 채팅 | `room-chat`, `roomMessages` |
+| 대기방 인원 갱신 | `room-update` |
+| 참가자 목록 ref | `roomPlayersRef` |
+| 그림 자유 그리기 | `free-draw`, `free-clear` (대기방 무관) |
+
+## 엔진 status (게임방)
+
+`waiting` · `assigning`(양세찬) · `playing`(+`lastStand`) · `finished`
+
+서버 `room.status`: `waiting` | `playing`. 입장 차단: `room.gameId`.
+
+## 게임 ID
+
+`feintpainting` = 그림 맞추기 · `yangsechan` = 양세찬 게임 · `airhockey` = 에어 하키
+
+## 아키텍처
+
+서버 권위(Socket.IO). `game-state` 수신, `game-input` / `room-chat` 전송.
+
+## 개발
+
+`server/` 또는 소켓 이벤트명을 바꾼 뒤에는 **`npm run dev` 재시작**을 확인한다.  
+(클라이언트만 새로고침하면 이벤트명 불일치로 방장에게 참가자가 안 보이는 등 증상이 난다.)

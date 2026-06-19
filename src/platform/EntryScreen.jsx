@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PlatformLogo } from './components/PlatformLogo.jsx';
 
-export function PartyLobby({ onCreateRoom, onJoin, defaultRoomCode }) {
+export function EntryScreen({ onCreateRoom, onJoin, defaultRoomCode }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState(defaultRoomCode || '');
 
@@ -19,21 +19,21 @@ export function PartyLobby({ onCreateRoom, onJoin, defaultRoomCode }) {
   };
 
   return (
-    <div className="lobby">
+    <div className="entry">
       <PlatformLogo />
-      <p className="lobby-desc">친구와 함께 즐기는 멀티플레이 파티</p>
+      <p className="entry-desc">친구와 함께 즐기는 멀티플레이 파티</p>
 
       <input
-        className="lobby-name"
+        className="entry-name"
         placeholder="닉네임"
         value={name}
         onChange={(e) => setName(e.target.value)}
         maxLength={10}
       />
 
-      <div className="lobby-join-row">
+      <div className="entry-join-row">
         <input
-          className="lobby-code"
+          className="entry-code"
           placeholder="코드"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -41,7 +41,7 @@ export function PartyLobby({ onCreateRoom, onJoin, defaultRoomCode }) {
         />
         <button
           type="button"
-          className="btn-primary lobby-join-btn"
+          className="btn-primary entry-join-btn"
           onClick={handleJoin}
           disabled={!canJoin}
         >
@@ -49,14 +49,16 @@ export function PartyLobby({ onCreateRoom, onJoin, defaultRoomCode }) {
         </button>
       </div>
 
-      <button
-        type="button"
-        className="btn-primary lobby-create-btn"
-        onClick={() => trimmedName && onCreateRoom(trimmedName)}
-        disabled={!trimmedName}
-      >
-        방 만들기
-      </button>
+      <div className="entry-create-group">
+        <button
+          type="button"
+          className="btn-secondary entry-create-btn"
+          onClick={() => trimmedName && onCreateRoom(trimmedName)}
+          disabled={!trimmedName}
+        >
+          방 만들기
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,11 @@
-import { WORDS, ROUND_TIME, MIN_ROUNDS, MAX_ROUNDS, DEFAULT_ROUNDS } from './constants.js';
-
-function pickWord() {
-  return WORDS[Math.floor(Math.random() * WORDS.length)];
-}
+import { ROUND_TIME, MIN_ROUNDS, MAX_ROUNDS, DEFAULT_ROUNDS } from './constants.js';
+import {
+  pickWord,
+  formatWord,
+  getWordLength,
+  isCorrectAnswer,
+  normalizeWordEntry,
+} from './match.js';
 
 export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinished) {
   const state = {
@@ -12,7 +15,7 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     round: 1,
     maxRounds: DEFAULT_ROUNDS,
     status: 'waiting',
-    currentWord: '',
+    currentWord: null,
     timeLeft: ROUND_TIME,
     messages: [],
     timer: null,
@@ -36,9 +39,9 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       wordLength: 0,
     };
 
-    if (state.status === 'playing') {
-      view.wordLength = state.currentWord.length;
-      if (isDrawer) view.word = state.currentWord;
+    if (state.status === 'playing' && state.currentWord) {
+      view.wordLength = getWordLength(state.currentWord);
+      if (isDrawer) view.word = formatWord(state.currentWord);
     }
     return view;
   }
@@ -98,9 +101,9 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
     state.status = 'round-end';
 
     if (guessed) {
-      addSystemMessage(`정답! "${state.currentWord}"`);
+      addSystemMessage(`정답! "${formatWord(state.currentWord)}"`);
     } else {
-      addSystemMessage(`시간 초과! 정답은 "${state.currentWord}"`);
+      addSystemMessage(`시간 초과! 정답은 "${formatWord(state.currentWord)}"`);
     }
     broadcastState();
 
@@ -189,8 +192,7 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       if (!player) return;
 
       if (state.status === 'playing' && !isDrawer) {
-        const isCorrect =
-          trimmed.replace(/\s/g, '') === state.currentWord.replace(/\s/g, '');
+        const isCorrect = isCorrectAnswer(trimmed, state.currentWord);
 
         if (isCorrect) {
           player.score += Math.max(10, state.timeLeft);
@@ -245,7 +247,7 @@ export function createGameEngine(hostId, onBroadcast, onClearCanvas, onGameFinis
       state.round = snapshot.round ?? 1;
       state.maxRounds = snapshot.maxRounds ?? DEFAULT_ROUNDS;
       state.status = snapshot.status ?? 'waiting';
-      state.currentWord = snapshot.currentWord ?? '';
+      state.currentWord = normalizeWordEntry(snapshot.currentWord);
       state.timeLeft = snapshot.timeLeft ?? ROUND_TIME;
       state.messages = (snapshot.messages ?? []).slice(-50);
       state.timer = null;

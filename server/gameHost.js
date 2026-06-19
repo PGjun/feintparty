@@ -103,12 +103,28 @@ export class GameHost {
 
   handleInput(room, socketId, playerName, msg) {
     const code = room.code.toUpperCase();
-    const entry = this.rooms.get(code);
+    let entry = this.rooms.get(code);
+
+    if (!entry && room.gameId) {
+      this.initEngine(room, { messages: room.roomMessages ?? [] });
+      entry = this.rooms.get(code);
+    }
     if (!entry) return false;
 
     const game = getServerGame(entry.gameId);
     const { engine } = entry;
     if (!game || !engine) return false;
+
+    if (
+      entry.gameId === 'yangsechan' &&
+      msg.type === 'yang-action' &&
+      (msg.action === 'confirm-word' || msg.action === 'submit-word')
+    ) {
+      const status = engine.getHostState?.()?.status;
+      if (status === 'waiting') {
+        engine.startAssigning();
+      }
+    }
 
     if (msg.type === 'host-start-game') {
       if (socketId !== room.hostId) return true;
@@ -117,6 +133,18 @@ export class GameHost {
         room.status = 'playing';
       } else if (entry.gameId === 'yangsechan') {
         engine.startAssigning();
+      } else if (entry.gameId === 'airhockey') {
+        engine.startGame(msg.targetScore);
+        room.status = 'playing';
+      }
+      return true;
+    }
+
+    if (msg.type === 'host-return-to-game-waiting') {
+      if (socketId !== room.hostId) return true;
+      if (entry.gameId === 'airhockey') {
+        engine.returnToGameWaiting();
+        room.status = 'waiting';
       }
       return true;
     }
@@ -133,7 +161,7 @@ export class GameHost {
       engine,
       canvasRef: { current: null },
       hostPeers: this.createBroadcaster(room),
-      lobbyPlayersRef: { current: room.players },
+      roomPlayersRef: { current: room.players },
       setRoom: null,
     });
   }

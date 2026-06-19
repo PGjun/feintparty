@@ -5,10 +5,10 @@ export function isFreeDrawStatus(status) {
 }
 
 export function handleHostMessage(msg, guestSocketId, ctx) {
-  const { engine, canvasRef, hostPeers, lobbyPlayersRef, setRoom } = ctx;
+  const { engine, canvasRef, hostPeers, roomPlayersRef, setRoom } = ctx;
   if (!engine) return false;
 
-  if (msg.type === 'lobby-draw') {
+  if (msg.type === 'free-draw') {
     if (!isFreeDrawStatus(engine.getHostState().status)) return true;
     canvasRef.current?.drawStroke(msg.stroke);
     hostPeers.broadcastExcept(guestSocketId, { type: 'draw', stroke: msg.stroke });
@@ -25,7 +25,7 @@ export function handleHostMessage(msg, guestSocketId, ctx) {
     return true;
   }
 
-  if (msg.type === 'lobby-clear') {
+  if (msg.type === 'free-clear') {
     if (!isFreeDrawStatus(engine.getHostState().status)) return true;
     canvasRef.current?.clear();
     hostPeers.broadcast({ type: 'clear' });
@@ -42,7 +42,7 @@ export function handleHostMessage(msg, guestSocketId, ctx) {
   }
 
   if (msg.type === 'chat') {
-    const player = lobbyPlayersRef.current.find((p) => p.id === guestSocketId);
+    const player = roomPlayersRef.current.find((p) => p.id === guestSocketId);
     engine.handleChat(guestSocketId, player?.name || '플레이어', msg.text);
     setRoom?.((prev) =>
       prev ? mergeEngineRoom(prev, engine.getHostState()) : engine.getHostState()

@@ -1,0 +1,28 @@
+---
+description: Mobile UI layout baseline (360px minimum viewport)
+globs: src/**/*.{css,jsx,tsx}
+alwaysApply: false
+---
+
+# Mobile UI baseline
+
+Design and verify mobile layouts against a **360px-wide viewport** (common Android minimum for modern apps).
+
+## Viewport assumptions
+
+- **Primary test width**: 360px (`100vw` on a typical small phone)
+- **Optional sanity check**: 320px (legacy minimum; do not optimize exclusively for this)
+- **Common widths to spot-check**: 375px, 390px (iPhone)
+
+## CSS conventions
+
+- Prefer `100vw` (not `%` of `.app`) for `position: fixed` overlays (toast, modals).
+- Side inset: **12px per side** (`calc(100vw - 24px)`) unless a component needs more margin.
+- Use `width: fit-content` + `max-width: min(calc(100vw - 24px), 360px)` for compact floating UI (toasts).
+- Reset global `button` padding on icon-only controls (e.g. `.toast-close { padding: 0; }`).
+
+## When changing UI
+
+- Confirm layout at **360px** before calling mobile work done.
+- Avoid forcing full viewport width on short text unless intentional.
+- Prefer slightly smaller type (13px) over squeezing with excessive padding when text wraps on small screens.

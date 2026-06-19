@@ -1,7 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CopyIconButton } from '../../platform/components/CopyIconButton.jsx';
 import { ChatPanel } from '../../platform/components/ChatPanel.jsx';
 import { buildInviteLink } from '../../platform/url.js';
+
+const LAST_STAND_GUIDE_LINES = [
+  '자유롭게 질문하고 정답을 말하세요! 포기해도 돼요!',
+  '단, 다른 사람도 정답을 말해서 게임을 끝낼 수 있어요!',
+];
+
+function buildChatMessages(messages, lastStand) {
+  const list = messages ?? [];
+  if (!lastStand) return list;
+
+  const withoutPanelCopy = list.filter(
+    (m) => !(m.type === 'system' && m.text?.includes('님의 마지막 기회'))
+  );
+  const hasGuide = withoutPanelCopy.some(
+    (m) => m.type === 'system' && m.text === LAST_STAND_GUIDE_LINES[0]
+  );
+  if (hasGuide) return withoutPanelCopy;
+
+  return [
+    ...withoutPanelCopy,
+    { type: 'system', text: LAST_STAND_GUIDE_LINES[0], time: 'laststand-guide-1' },
+    { type: 'system', text: LAST_STAND_GUIDE_LINES[1], time: 'laststand-guide-2' },
+  ];
+}
 
 function AssigningPanel({ room, wordInput, onWordChange, onConfirm, onBeginPlaying, isHost }) {
   return (
@@ -159,22 +183,13 @@ function YangActionInput({ onQuestion, onAnswer }) {
   );
 }
 
-function LastStandPanel({ room, onGiveUp }) {
-  if (!room.lastStand) return null;
+
+function LastStandPanel({ room }) {
+  if (!room.lastStand || !room.lastStandPlayerName) return null;
 
   return (
     <div className="yang-turn-panel last-stand">
       <p className="yang-laststand-title">{room.lastStandPlayerName}님의 마지막 기회</p>
-      <p className="yang-laststand-desc">
-        자유롭게 질문하고 정답을 말하세요! 포기해도 돼요!
-        <br />
-        단, 다른 사람도 정답을 말해서 게임을 끝낼 수 있어요!
-      </p>
-      {room.canGiveUp && (
-        <button type="button" className="yang-giveup-btn" onClick={onGiveUp}>
-          포기
-        </button>
-      )}
     </div>
   );
 }
@@ -234,18 +249,28 @@ export default function GameRoom({
 
   const inviteLink = buildInviteLink(room.code, gameId);
   const isFinished = room.status === 'finished';
-  const isAssigningPhase = room.status === 'assigning' || room.status === 'waiting';
+  const isAssigningPhase = room.status === 'assigning';
   const showInvite = isAssigningPhase || isFinished;
 
   const useActionInput =
     room.status === 'playing' &&
     !room.freeTalk &&
-    (room.isMyTurn || room.isLastStandPlayer);
+    !room.lastStand &&
+    room.isMyTurn;
 
   const showPassTurnBar =
     room.status === 'playing' && room.freeTalk && room.canPassTurn;
 
-  const chatPlaceholder = '메시지 입력...';
+  const showGiveUpBar = room.status === 'playing' && room.lastStand && room.canGiveUp;
+
+  const chatPlaceholder = room.lastStand
+    ? '질문 또는 정답을 입력하세요...'
+    : '메시지 입력...';
+
+  const chatMessages = useMemo(
+    () => buildChatMessages(room.messages, room.lastStand),
+    [room.messages, room.lastStand]
+  );
 
   return (
     <div className="game game-yangsechan">
@@ -282,15 +307,8 @@ export default function GameRoom({
           <>
             {isFinished && <FinishedBanner room={room} />}
             <WordCards room={room} />
-            {room.status === 'playing' && (
-              <>
-                {room.lastStand ? (
-                  <LastStandPanel room={room} onGiveUp={handleGiveUp} />
-                ) : (
-                  <TurnPanel room={room} />
-                )}
-              </>
-            )}
+            {room.status === 'playing' && room.lastStand && <LastStandPanel room={room} />}
+            {room.status === 'playing' && !room.lastStand && <TurnPanel room={room} />}
           </>
         )}
       </div>
@@ -320,12 +338,20 @@ export default function GameRoom({
         )}
 
         <ChatPanel
-          messages={room.messages || []}
+          messages={chatMessages}
           players={room.players}
           onSend={onSendChat}
           placeholder={chatPlaceholder}
           hideInput={useActionInput}
         />
+
+        {showGiveUpBar && (
+          <div className="yang-giveup-bar">
+            <button type="button" className="yang-giveup-btn" onClick={handleGiveUp}>
+              포기
+            </button>
+          </div>
+        )}
 
         {useActionInput && (
           <YangActionInput

@@ -20,7 +20,7 @@ export function createHandlers(ctx) {
     handleDraw(stroke) {
       const status = room?.status;
       if (isFreeDrawStatus(status)) {
-        emitGameInput({ type: 'lobby-draw', stroke });
+        emitGameInput({ type: 'free-draw', stroke });
         return;
       }
       emitGameInput({ type: 'game-draw', stroke });
@@ -29,7 +29,7 @@ export function createHandlers(ctx) {
     handleClear() {
       const status = room?.status;
       if (isFreeDrawStatus(status)) {
-        emitGameInput({ type: 'lobby-clear' });
+        emitGameInput({ type: 'free-clear' });
         return;
       }
       emitGameInput({ type: 'game-clear' });
@@ -39,7 +39,7 @@ export function createHandlers(ctx) {
 
 export const feintpainting = {
   id: 'feintpainting',
-  name: 'FeintPainting',
+  name: '그림 맞추기',
   emoji: '🎨',
   description: '친구들과 함께 실시간으로 그림을 맞춰보세요!',
   maxPlayers: MAX_PLAYERS,

@@ -35,7 +35,7 @@ export function useRoomSession() {
 
   const socketRef = useRef(null);
   const canvasRef = useRef(null);
-  const lobbyPlayersRef = useRef([]);
+  const roomPlayersRef = useRef([]);
   const isHostRef = useRef(false);
   const myNameRef = useRef('');
   const roomCodeRef = useRef(null);
@@ -104,7 +104,7 @@ export function useRoomSession() {
     setIsHost(data.isHost);
     isHostRef.current = data.isHost;
     setSignalingStatus(null);
-    lobbyPlayersRef.current = data.players;
+    roomPlayersRef.current = data.players;
     saveSession(data.code, myNameRef.current);
     setUrlParams({ gameId: data.gameId, roomCode: data.code });
 
@@ -144,7 +144,7 @@ export function useRoomSession() {
     const amNewHost = socket.id === data.newHostId;
     setIsHost(amNewHost);
     isHostRef.current = amNewHost;
-    lobbyPlayersRef.current = data.players;
+    roomPlayersRef.current = data.players;
     setRoom((prev) =>
       prev
         ? {
@@ -209,7 +209,7 @@ export function useRoomSession() {
       setSignalingStatus({ level: 'error', text: '🔴 서버 연결 실패' });
     });
 
-    socket.on('lobby-chat', ({ message }) => {
+    socket.on('room-chat', ({ message }) => {
       setRoom((prev) =>
         prev ? { ...prev, messages: appendMessage(prev.messages, message) } : prev
       );
@@ -243,7 +243,7 @@ export function useRoomSession() {
       setTimeout(() => setSignalingStatus(null), 2500);
     });
 
-    socket.on('return-to-lobby', () => {
+    socket.on('return-to-waiting', () => {
       canvasRef.current?.clear();
       setRoom((prev) =>
         prev
@@ -260,8 +260,8 @@ export function useRoomSession() {
       setUrlParams({ gameId: null, roomCode: roomCodeRef.current });
     });
 
-    socket.on('lobby-update', (data) => {
-      lobbyPlayersRef.current = data.players;
+    socket.on('room-update', (data) => {
+      roomPlayersRef.current = data.players;
       setRoom((prev) =>
         prev
           ? {
@@ -284,18 +284,15 @@ export function useRoomSession() {
 
     socket.on('host-migrated', (data) => {
       handleHostMigration(socket, data);
-      setSignalingStatus({
-        level: 'warn',
-        text:
-          socket.id === data.newHostId
-            ? '👑 방장 권한을 이어받았어요'
-            : `👑 ${data.newHostName}님이 새 방장이에요`,
-      });
-      setTimeout(() => setSignalingStatus(null), 4000);
+      showToast(
+        socket.id === data.newHostId
+          ? '👑 방장 권한을 이어받았어요'
+          : `👑 ${data.newHostName}님이 새 방장이에요`
+      );
     });
 
     socket.on('room-closed', (msg) => {
-      lobbyPlayersRef.current = [];
+      roomPlayersRef.current = [];
       canvasRef.current?.clear();
       roomCodeRef.current = null;
       roomJoinedRef.current = false;
@@ -355,7 +352,7 @@ export function useRoomSession() {
     if (gameIdRef.current) {
       socketRef.current?.emit('game-input', { code, msg: { type: 'chat', text: trimmed } });
     } else {
-      socketRef.current?.emit('lobby-chat', { code, text: trimmed });
+      socketRef.current?.emit('room-chat', { code, text: trimmed });
     }
   }, []);
 
@@ -388,7 +385,7 @@ export function useRoomSession() {
       if (!isHostRef.current || !roomCode) return;
       const game = getGame(gameId);
       if (!game) return;
-      if (lobbyPlayersRef.current.length < game.minPlayers) return;
+      if (roomPlayersRef.current.length < game.minPlayers) return;
 
       socketRef.current?.emit('select-game', {
         code: roomCode,
@@ -399,7 +396,7 @@ export function useRoomSession() {
     [roomCode]
   );
 
-  const returnToLobby = useCallback(() => {
+  const returnToWaitingRoom = useCallback(() => {
     if (!isHostRef.current || !roomCodeRef.current) return;
 
     canvasRef.current?.clear();
@@ -423,15 +420,12 @@ export function useRoomSession() {
 
   const leaveRoom = useCallback(() => {
     intentionalLeaveRef.current = true;
-    lobbyPlayersRef.current = [];
+    roomPlayersRef.current = [];
     canvasRef.current?.clear();
     clearSession();
 
     const socket = socketRef.current;
-    if (socket) {
-      socket.disconnect();
-      socket.connect();
-    }
+    const code = roomCodeRef.current;
 
     setRoom(null);
     setRoomCode(null);
@@ -442,6 +436,24 @@ export function useRoomSession() {
     setSignalingStatus(null);
     dismissToast();
     setUrlParams({ gameId: null, roomCode: null });
+
+    if (!socket) return;
+
+    let finished = false;
+    const finishDisconnect = () => {
+      if (finished) return;
+      finished = true;
+      socket.disconnect();
+      socket.connect();
+    };
+
+    if (code && socket.connected) {
+      socket.emit('leave-room', { code }, finishDisconnect);
+      setTimeout(finishDisconnect, 2000);
+      return;
+    }
+
+    finishDisconnect();
   }, [dismissToast]);
 
   return {
@@ -455,7 +467,7 @@ export function useRoomSession() {
     createRoom,
     joinRoom,
     selectGame,
-    returnToLobby,
+    returnToWaitingRoom,
     leaveRoom,
     sendChat,
     handlers,

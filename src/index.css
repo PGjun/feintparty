@@ -66,6 +66,16 @@ button:disabled {
   transform: none;
 }
 
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+}
+
 input {
   font-family: inherit;
   border: 2px solid var(--surface2);
@@ -88,7 +98,7 @@ input:focus {
   padding: 20px;
 }
 
-.app.lobby-page {
+.app.entry-page {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -236,7 +246,7 @@ input:focus {
   background-clip: text;
 }
 
-.lobby {
+.entry {
   max-width: 400px;
   width: 100%;
   margin: 0 auto;
@@ -247,27 +257,27 @@ input:focus {
   position: relative;
 }
 
-.lobby h2 {
+.entry h2 {
   text-align: center;
   margin-bottom: 24px;
 }
 
-.lobby-desc {
+.entry-desc {
   text-align: center;
   color: var(--muted);
   font-size: 13px;
   margin-bottom: 16px;
 }
 
-.lobby-back {
+.entry-back {
   position: absolute;
   left: 12px;
   top: 12px;
   transform: none;
 }
 
-.lobby-back:hover,
-.lobby-back:active {
+.entry-back:hover,
+.entry-back:active {
   transform: none;
 }
 
@@ -277,60 +287,53 @@ input:focus {
   color: var(--text);
 }
 
-.party-room {
+.waiting-room {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 16px;
   align-items: start;
 }
 
-.party-room-main {
+.waiting-room-main {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.party-room-sidebar {
+.waiting-room-panel {
   background: var(--surface);
   border-radius: 12px;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 0;
 }
 
-.party-room-sidebar .game-picker {
+.waiting-room-panel .game-picker {
   flex-shrink: 0;
 }
 
-.party-room-sidebar .chat-box {
-  flex: 0 0 auto;
-  min-height: 0;
-}
-
-.party-section-title {
+.waiting-section-title {
   font-size: 1.1rem;
   font-weight: 700;
   margin-bottom: 4px;
 }
 
-.party-section-desc {
+.waiting-section-desc {
   font-size: 13px;
   color: var(--muted);
   margin-bottom: 12px;
 }
 
-.party-players {
+.waiting-players {
   margin-top: 4px;
 }
 
-.party-waiting {
-  padding: 4px 0 12px;
+.waiting-room-guest {
   text-align: center;
 }
 
-.party-waiting-text {
+.waiting-room-guest-text {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
@@ -338,7 +341,7 @@ input:focus {
 }
 
 @media (max-width: 768px) {
-  .party-room {
+  .waiting-room {
     grid-template-columns: 1fr;
   }
 }
@@ -439,7 +442,7 @@ input:focus {
   color: var(--text);
 }
 
-.lobby .divider {
+.entry .divider {
   text-align: center;
   color: var(--muted);
   margin: 16px 0;
@@ -467,34 +470,36 @@ input:focus {
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  max-width: min(calc(100% - 32px), 360px);
-  padding: 12px 14px 12px 16px;
+  gap: 8px;
+  width: fit-content;
+  max-width: min(calc(100vw - 24px), 360px);
+  padding: 10px 10px 10px 14px;
   background: rgba(22, 33, 62, 0.96);
   border: 1px solid rgba(233, 69, 96, 0.35);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.45;
   animation: toast-in 0.2s ease;
 }
 
 .toast-message {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .toast-close {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -515,22 +520,37 @@ input:focus {
   }
 }
 
-.lobby input {
+.entry input {
   width: 100%;
   box-sizing: border-box;
 }
 
-.lobby-name {
+.entry-name {
   margin-bottom: 12px;
 }
 
-.lobby-join-row {
+.entry-create-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.entry-create-btn {
+  width: 100%;
+  margin-top: 0;
+  padding: 11px 20px;
+}
+
+.entry-join-row {
   display: flex;
   align-items: stretch;
   gap: 10px;
+  margin-top: 0;
 }
 
-.lobby-join-row .lobby-code {
+.entry-join-row .entry-code {
   width: 96px;
   flex-shrink: 0;
   margin: 0;
@@ -543,7 +563,7 @@ input:focus {
   line-height: 1.2;
 }
 
-.lobby-join-row .lobby-join-btn {
+.entry-join-row .entry-join-btn {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -554,46 +574,17 @@ input:focus {
   color: #fff;
 }
 
-.lobby-create-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-top: 24px;
-}
-
-.lobby-create-btn {
-  width: 100%;
-  margin-top: 0;
-  padding: 11px 20px;
-}
-
-.lobby-create-btn.subtle {
+.entry-create-btn.subtle {
   background: var(--surface2);
   color: var(--text);
 }
 
-.lobby-mode-hint {
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
-  line-height: 1.4;
-}
-
-.lobby .divider {
-  text-align: center;
-  color: var(--muted);
-  margin: 16px 0;
-  font-size: 13px;
-}
-
-.lobby .join-row {
+.entry .join-row {
   display: flex;
   gap: 8px;
 }
 
-.lobby .join-row input:first-child {
+.entry .join-row input:first-child {
   width: 100px;
   text-align: center;
   text-transform: uppercase;
@@ -601,11 +592,11 @@ input:focus {
   font-weight: 700;
 }
 
-.lobby .join-row input:last-child {
+.entry .join-row input:last-child {
   flex: 1;
 }
 
-.lobby .lobby-code {
+.entry .entry-code {
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 4px;
@@ -641,12 +632,12 @@ input:focus {
     padding: 12px;
   }
 
-  .app.lobby-page {
+  .app.entry-page {
     padding: max(24px, env(safe-area-inset-top, 0px)) 16px
       max(24px, env(safe-area-inset-bottom, 0px));
   }
 
-  .lobby {
+  .entry {
     padding: 28px 24px;
   }
 
@@ -1164,12 +1155,7 @@ input:focus {
   font-size: 16px;
   font-weight: 700;
   color: var(--accent);
-}
-
-.yang-laststand-desc {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.55;
+  text-align: center;
 }
 
 .yang-giveup-btn {
@@ -1182,6 +1168,10 @@ input:focus {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.yang-giveup-bar {
+  margin-top: 8px;
 }
 
 .yang-answer-hint {
@@ -1487,4 +1477,206 @@ input:focus {
 .guest-panel .btn-secondary {
   width: 100%;
   margin-top: 12px;
+}
+
+/* ── Air Hockey ── */
+
+.game-airhockey {
+  grid-template-columns: 1fr 320px;
+}
+
+.game-airhockey-playing {
+  grid-template-columns: 1fr;
+}
+
+.game-airhockey-playing .hockey-main {
+  min-height: 0;
+}
+
+.hockey-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 420px;
+}
+
+.hockey-score-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hockey-score-values {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--success);
+  letter-spacing: 2px;
+}
+
+.hockey-score-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hockey-score-name:last-child {
+  text-align: right;
+}
+
+.hockey-table-wrap {
+  flex: 1;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  min-height: 360px;
+  max-height: min(72vh, 680px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  touch-action: none;
+}
+
+.game-airhockey-playing .hockey-table-wrap {
+  min-height: 52vh;
+  max-height: min(78vh, 720px);
+  aspect-ratio: 2 / 3.4;
+}
+
+.hockey-table {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.hockey-emoji-bar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+.hockey-emoji-btn {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  padding: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  line-height: 1;
+}
+
+.hockey-emoji-floats {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 72px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+
+.game-airhockey-playing .hockey-main {
+  position: relative;
+}
+
+.hockey-emoji-float {
+  align-self: flex-start;
+  background: rgba(15, 23, 42, 0.88);
+  border-radius: 20px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: hockey-emoji-pop 2.5s ease forwards;
+}
+
+.hockey-emoji-float-name {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hockey-emoji-float-emoji {
+  font-size: 20px;
+}
+
+@keyframes hockey-emoji-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.hockey-finished .hockey-final-score {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.hockey-wait-players {
+  margin-bottom: 4px;
+}
+
+.hockey-wait-guest {
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.hockey-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hockey-return-bar {
+  margin-top: auto;
+  padding-top: 8px;
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 768px) {
+  .game-airhockey {
+    grid-template-columns: 1fr;
+  }
+
+  .game-airhockey:not(.game-airhockey-playing) .hockey-sidebar {
+    order: 2;
+  }
+
+  .hockey-main {
+    min-height: 360px;
+  }
+
+  .hockey-table-wrap {
+    min-height: 320px;
+    max-height: min(70vh, 600px);
+  }
+
+  .game-airhockey-playing .hockey-table-wrap {
+    min-height: 48vh;
+    max-height: min(75vh, 640px);
+  }
 }
