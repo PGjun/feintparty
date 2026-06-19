@@ -22,7 +22,6 @@ export class GameHost {
         this.io.to(toId).emit('game-state', msg.state);
         return;
       }
-      if (msg.type === 'engine-backup') return;
       this.io.to(toId).emit('game-event', msg);
     };
 

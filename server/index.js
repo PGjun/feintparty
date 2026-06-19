@@ -30,10 +30,9 @@ function generateRoomCode() {
   return code;
 }
 
-function createRoom(code, hostId, hostName, mode = 'p2p') {
+function createRoom(code, hostId, hostName) {
   return {
     code,
-    mode,
     gameId: null,
     hostId,
     players: [{ id: hostId, name: hostName }],
@@ -47,7 +46,6 @@ function createRoom(code, hostId, hostName, mode = 'p2p') {
 function getLobbyState(room) {
   return {
     code: room.code,
-    mode: room.mode,
     gameId: room.gameId,
     players: room.players.map((p) => ({ id: p.id, name: p.name, score: 0 })),
     maxPlayers: room.maxPlayers,
@@ -60,12 +58,8 @@ function broadcastLobby(room) {
   io.to(room.code).emit('lobby-update', getLobbyState(room));
 }
 
-function isServerRoom(room) {
-  return room?.mode === 'server';
-}
-
 function syncServerPlayers(room) {
-  if (!isServerRoom(room) || !gameHost.hasEngine(room.code)) return;
+  if (!gameHost.hasEngine(room.code)) return;
   gameHost.setPlayers(room);
 }
 
@@ -109,7 +103,6 @@ function addGraceSlot(room, player) {
 function emitRoomJoined(socket, room, { isHost, isReconnect = false }) {
   socket.emit(isReconnect ? 'room-rejoined' : 'room-joined', {
     code: room.code,
-    mode: room.mode,
     isHost,
     isReconnect,
     hostId: room.hostId,
@@ -119,7 +112,7 @@ function emitRoomJoined(socket, room, { isHost, isReconnect = false }) {
     ...getLobbyState(room),
   });
 
-  if (isServerRoom(room) && room.gameId) {
+  if (room.gameId) {
     const engine = gameHost.getEngine(room.code);
     if (engine) sendServerGameState(socket, room);
   }
@@ -133,11 +126,8 @@ function tryMigrateHost(room, code, oldHostId) {
   }
 
   room.hostId = room.players[0].id;
-
-  if (isServerRoom(room)) {
-    gameHost.replacePlayerId(room, oldHostId, room.hostId);
-    syncServerPlayers(room);
-  }
+  gameHost.replacePlayerId(room, oldHostId, room.hostId);
+  syncServerPlayers(room);
 
   io.to(code).emit('host-migrated', {
     ...getLobbyState(room),
@@ -175,23 +165,10 @@ function handlePlayerReconnect(socket, room, name, grace) {
   const isHost = socket.id === room.hostId;
   emitRoomJoined(socket, room, { isHost, isReconnect: true });
 
-  if (isServerRoom(room)) {
-    if (previousSocketId && previousSocketId !== socket.id) {
-      gameHost.replacePlayerId(room, previousSocketId, socket.id);
-    }
-    syncServerPlayers(room);
-  } else if (
-    previousSocketId &&
-    previousSocketId !== socket.id &&
-    socket.id !== room.hostId
-  ) {
-    io.to(room.hostId).emit('peer-rejoined', {
-      oldSocketId: previousSocketId,
-      newSocketId: socket.id,
-      name,
-    });
+  if (previousSocketId && previousSocketId !== socket.id) {
+    gameHost.replacePlayerId(room, previousSocketId, socket.id);
   }
-
+  syncServerPlayers(room);
   broadcastLobby(room);
 }
 
@@ -201,7 +178,7 @@ function appendLobbyMessage(room, message) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size, supportsServerMode: true });
+  res.json({ ok: true, rooms: rooms.size });
 });
 
 function leaveSocketRoom(socket) {
@@ -212,15 +189,14 @@ function leaveSocketRoom(socket) {
 }
 
 io.on('connection', (socket) => {
-  socket.on('create-room', ({ name, mode = 'p2p' }) => {
-    const roomMode = mode === 'server' ? 'server' : 'p2p';
+  socket.on('create-room', ({ name }) => {
     let code;
     do {
       code = generateRoomCode();
     } while (rooms.has(code));
 
     leaveSocketRoom(socket);
-    const room = createRoom(code, socket.id, name, roomMode);
+    const room = createRoom(code, socket.id, name);
     rooms.set(code, room);
     socket.join(code);
     socket.roomCode = code;
@@ -262,10 +238,6 @@ io.on('connection', (socket) => {
     emitRoomJoined(socket, room, { isHost: false });
     broadcastLobby(room);
     syncServerPlayers(room);
-
-    if (!isServerRoom(room)) {
-      io.to(room.hostId).emit('peer-joined', { socketId: socket.id, name });
-    }
   });
 
   socket.on('rejoin-room', ({ code, name }) => {
@@ -310,10 +282,7 @@ io.on('connection', (socket) => {
 
     room.gameId = gameId;
     io.to(room.code).emit('game-selected', { gameId });
-
-    if (isServerRoom(room)) {
-      gameHost.initEngine(room, { messages: room.lobbyMessages ?? [] });
-    }
+    gameHost.initEngine(room, { messages: room.lobbyMessages ?? [] });
   });
 
   socket.on('lobby-chat', ({ code, text }) => {
@@ -328,7 +297,7 @@ io.on('connection', (socket) => {
     const trimmed = text?.trim();
     if (!trimmed) return;
 
-    if (isServerRoom(room) && gameHost.hasEngine(room.code)) {
+    if (gameHost.hasEngine(room.code)) {
       gameHost.handleInput(room, socket.id, player.name, { type: 'chat', text: trimmed });
       return;
     }
@@ -343,28 +312,10 @@ io.on('connection', (socket) => {
 
   socket.on('game-input', ({ code, msg }) => {
     const room = rooms.get(code?.toUpperCase());
-    if (!room || !isServerRoom(room)) return;
+    if (!room) return;
     const player = room.players.find((p) => p.id === socket.id);
     if (!player || !msg) return;
     gameHost.handleInput(room, socket.id, player.name, msg);
-  });
-
-  socket.on('webrtc-signal', ({ to, signal }) => {
-    io.to(to).emit('webrtc-signal', { from: socket.id, signal });
-  });
-
-  socket.on('game-started', ({ code }) => {
-    const room = rooms.get(code?.toUpperCase());
-    if (!room || room.hostId !== socket.id) return;
-    if (isServerRoom(room)) return;
-    room.status = 'playing';
-  });
-
-  socket.on('game-finished', ({ code }) => {
-    const room = rooms.get(code?.toUpperCase());
-    if (!room || room.hostId !== socket.id) return;
-    if (isServerRoom(room)) return;
-    room.status = 'waiting';
   });
 
   socket.on('leave-game', ({ code }) => {
@@ -373,9 +324,7 @@ io.on('connection', (socket) => {
 
     room.gameId = null;
     room.status = 'waiting';
-    if (isServerRoom(room)) {
-      gameHost.destroyEngine(room.code);
-    }
+    gameHost.destroyEngine(room.code);
     io.to(room.code).emit('return-to-lobby');
     broadcastLobby(room);
   });
@@ -411,14 +360,6 @@ io.on('connection', (socket) => {
     }
 
     syncServerPlayers(room);
-
-    if (!isServerRoom(room)) {
-      io.to(room.hostId).emit('peer-left', {
-        socketId: socket.id,
-        name: player.name,
-        graceMs: RECONNECT_GRACE_MS,
-      });
-    }
     broadcastLobby(room);
   });
 });
@@ -432,5 +373,4 @@ if (existsSync(distPath)) {
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 Feint Party 서버: http://localhost:${PORT}`);
-  console.log('   P2P 모드: 방장 기기에서 게임 실행 | 서버 모드: Node에서 게임 실행');
 });

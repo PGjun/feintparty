@@ -4,7 +4,6 @@ export function mergeEngineRoom(prev, engineState) {
     ...engineState,
     gameId: prev.gameId,
     hostId: prev.hostId,
-    mode: prev.mode,
     maxPlayers: prev.maxPlayers,
   };
 }

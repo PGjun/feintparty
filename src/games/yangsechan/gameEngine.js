@@ -71,12 +71,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
   }
 
   function broadcastState() {
-    const backup = exportSnapshot();
     state.players.forEach((p) => {
       onBroadcast(p.id, { type: 'state', state: getStateForPlayer(p.id) });
-      if (p.id !== hostId) {
-        onBroadcast(p.id, { type: 'engine-backup', backup });
-      }
     });
   }
 

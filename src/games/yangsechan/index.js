@@ -1,5 +1,4 @@
 import { createGameEngine } from './gameEngine.js';
-import { mergeEngineRoom } from '../../platform/roomState.js';
 import GameRoom from './GameRoom.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import {
@@ -8,50 +7,14 @@ import {
   onHostEngineReady,
 } from './protocol.js';
 
-function syncRoom(setRoom, engine) {
-  setRoom?.((prev) =>
-    prev ? mergeEngineRoom(prev, engine.getHostState()) : engine.getHostState()
-  );
-}
-
 function sendAction(ctx, action, payload = {}) {
-  const { isServerMode, emitGameInput, isHost, myId, myName, gameEngineRef, guestPeerRef, setRoom } =
-    ctx;
-
-  if (isServerMode) {
-    emitGameInput({ type: 'yang-action', action, ...payload });
-    return;
-  }
-
-  if (isHost) {
-    const engine = gameEngineRef.current;
-    if (!engine) return;
-    engine.handleAction(myId, myName, action, payload);
-    syncRoom(setRoom, engine);
-  } else {
-    guestPeerRef.current?.send({ type: 'yang-action', action, ...payload });
-  }
+  ctx.emitGameInput({ type: 'yang-action', action, ...payload });
 }
 
 function sendChatMessage(ctx, text) {
-  const { isServerMode, emitGameInput, isHost, myId, myName, gameEngineRef, guestPeerRef, setRoom } =
-    ctx;
   const trimmed = text.trim();
   if (!trimmed) return;
-
-  if (isServerMode) {
-    emitGameInput({ type: 'chat', text: trimmed });
-    return;
-  }
-
-  if (isHost) {
-    const engine = gameEngineRef.current;
-    if (!engine) return;
-    engine.handleChat(myId, myName, trimmed);
-    syncRoom(setRoom, engine);
-  } else {
-    guestPeerRef.current?.send({ type: 'chat', text: trimmed });
-  }
+  ctx.emitGameInput({ type: 'chat', text: trimmed });
 }
 
 function sendTurnChat(ctx, text, mode) {
@@ -69,18 +32,12 @@ function sendTurnChat(ctx, text, mode) {
 }
 
 export function createHandlers(ctx) {
-  const { isHost, isServerMode, emitGameInput, gameEngineRef, socketRef, roomCode, setRoom } = ctx;
+  const { isHost, emitGameInput } = ctx;
 
   return {
     handleStartGame() {
       if (!isHost) return;
-      if (isServerMode) {
-        emitGameInput({ type: 'host-start-game' });
-        return;
-      }
-      const engine = gameEngineRef.current;
-      engine?.startAssigning();
-      syncRoom(setRoom, engine);
+      emitGameInput({ type: 'host-start-game' });
     },
 
     handleSubmitWord(word) {
@@ -93,15 +50,7 @@ export function createHandlers(ctx) {
 
     handleBeginPlaying() {
       if (!isHost) return;
-      if (isServerMode) {
-        emitGameInput({ type: 'host-begin-playing' });
-        return;
-      }
-      const engine = gameEngineRef.current;
-      engine?.beginPlaying(() => {
-        socketRef.current?.emit('game-started', { code: roomCode });
-      });
-      syncRoom(setRoom, engine);
+      emitGameInput({ type: 'host-begin-playing' });
     },
 
     handleSelectMode(mode) {

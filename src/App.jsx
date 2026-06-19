@@ -16,7 +16,6 @@ export default function App() {
     isHost,
     toast,
     dismissToast,
-    p2pStatus,
     signalingStatus,
     canvasRef,
     createRoom,
@@ -101,7 +100,6 @@ export default function App() {
           <HeaderStatus
             room={room}
             isHost={isHost}
-            p2pStatus={p2pStatus}
             signalingStatus={signalingStatus}
             hideWhenOk={hideHeaderStatusWhenOk}
           />
@@ -110,8 +108,7 @@ export default function App() {
 
       {!room ? (
         <PartyLobby
-          onCreateServer={(name) => createRoom(name, 'server')}
-          onCreateP2p={(name) => createRoom(name, 'p2p')}
+          onCreateRoom={createRoom}
           onJoin={joinRoom}
           defaultRoomCode={defaultRoomCode}
         />

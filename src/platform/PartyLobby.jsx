@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PlatformLogo } from './components/PlatformLogo.jsx';
 
-export function PartyLobby({ onCreateServer, onCreateP2p, onJoin, defaultRoomCode }) {
+export function PartyLobby({ onCreateRoom, onJoin, defaultRoomCode }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState(defaultRoomCode || '');
 
@@ -49,25 +49,14 @@ export function PartyLobby({ onCreateServer, onCreateP2p, onJoin, defaultRoomCod
         </button>
       </div>
 
-      <div className="lobby-create-group">
-        <button
-          type="button"
-          className="btn-primary lobby-create-btn"
-          onClick={() => trimmedName && onCreateServer(trimmedName)}
-          disabled={!trimmedName}
-        >
-          서버로 방 만들기
-        </button>
-        <button
-          type="button"
-          className="btn-secondary lobby-create-btn subtle"
-          onClick={() => trimmedName && onCreateP2p(trimmedName)}
-          disabled={!trimmedName}
-        >
-          호스트로 방 만들기
-        </button>
-      </div>
-      <p className="lobby-mode-hint">와이파이·모바일 환경에서는 서버 방을 권장해요.</p>
+      <button
+        type="button"
+        className="btn-primary lobby-create-btn"
+        onClick={() => trimmedName && onCreateRoom(trimmedName)}
+        disabled={!trimmedName}
+      >
+        방 만들기
+      </button>
     </div>
   );
 }

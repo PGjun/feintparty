@@ -1,11 +1,10 @@
-import { p2pStatusClassName, resolveHeaderStatus } from '../p2pStatus.js';
+import { resolveHeaderStatus, statusClassName } from '../headerStatus.js';
 
-export function HeaderStatus({ p2pStatus, signalingStatus, room, isHost, hideWhenOk = false }) {
+export function HeaderStatus({ signalingStatus, room, isHost, hideWhenOk = false }) {
   if (!room) return null;
 
   const status = resolveHeaderStatus({
     signalingStatus,
-    p2pStatus,
     room,
     isHost,
     hideWhenOk,
@@ -15,7 +14,7 @@ export function HeaderStatus({ p2pStatus, signalingStatus, room, isHost, hideWhe
 
   return (
     <div
-      className={p2pStatusClassName(status.level)}
+      className={statusClassName(status.level)}
       role="status"
       aria-live="polite"
       title={status.text}
