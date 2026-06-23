@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CopyIconButton } from '../../platform/components/CopyIconButton.jsx';
 import { ChatPanel } from '../../platform/components/ChatPanel.jsx';
 import { buildInviteLink } from '../../platform/url.js';
+import { TOPIC_LIST } from './wordPools.js';
 
 const LAST_STAND_GUIDE_LINES = [
   '자유롭게 질문하고 정답을 말하세요! 포기해도 돼요!',
@@ -27,54 +28,123 @@ function buildChatMessages(messages, lastStand) {
   ];
 }
 
-function AssigningPanel({ room, wordInput, onWordChange, onConfirm, onBeginPlaying, isHost }) {
+function AssigningPanel({
+  room,
+  wordInput,
+  onWordChange,
+  onConfirm,
+  onBeginPlaying,
+  onSetAssignSettings,
+  isHost,
+}) {
+  const isAuto = room.assignmentMode === 'auto';
+
   return (
     <div className="yang-assigning">
       <h3 className="yang-section-title">단어 정하기</h3>
 
-      {!room.myConfirmed ? (
-        <div className="yang-word-form">
-          <input
-            type="text"
-            placeholder="단어 입력..."
-            value={wordInput}
-            onChange={(e) => onWordChange(e.target.value)}
-            maxLength={100}
-          />
-          <button
-            type="button"
-            className="yang-confirm-btn"
-            onClick={() => onConfirm(wordInput)}
-            disabled={!wordInput.trim()}
-          >
-            확인
-          </button>
+      {isHost ? (
+        <div className="yang-assign-settings">
+          <p className="yang-section-desc">단어 배분 방식</p>
+          <div className="yang-mode-toggle">
+            <button
+              type="button"
+              className={`yang-mode-btn${!isAuto ? ' active' : ''}`}
+              onClick={() => onSetAssignSettings('manual', room.wordTopic)}
+            >
+              직접 입력
+            </button>
+            <button
+              type="button"
+              className={`yang-mode-btn${isAuto ? ' active' : ''}`}
+              onClick={() => onSetAssignSettings('auto', room.wordTopic)}
+            >
+              자동 배분
+            </button>
+          </div>
+
+          {isAuto && (
+            <div className="yang-topic-picker">
+              <p className="yang-section-desc">주제 선택</p>
+              <div className="yang-topic-list">
+                {TOPIC_LIST.map((topic) => (
+                  <button
+                    key={topic.id}
+                    type="button"
+                    className={`yang-topic-btn${room.wordTopic === topic.id ? ' active' : ''}`}
+                    onClick={() => onSetAssignSettings('auto', topic.id)}
+                  >
+                    {topic.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
-        <p className="yang-confirmed-msg">✅ 단어를 확정했어요!</p>
+        <div className="yang-assign-guest">
+          {isAuto ? (
+            <p className="yang-wait-host">
+              {room.wordTopicLabel
+                ? `자동 배분 · ${room.wordTopicLabel}`
+                : '방장이 주제를 고르는 중...'}
+            </p>
+          ) : (
+            <p className="yang-section-desc">각자 단어를 정한 뒤 확정해주세요.</p>
+          )}
+        </div>
       )}
 
-      <ul className="yang-confirm-list">
-        {room.players.map((p) => (
-          <li key={p.id} className={p.confirmed ? 'done' : ''}>
-            {p.name} {p.confirmed ? '✅' : '⏳'}
-          </li>
-        ))}
-      </ul>
+      {!isAuto && (
+        <>
+          {!room.myConfirmed ? (
+            <div className="yang-word-form">
+              <input
+                type="text"
+                placeholder="단어 입력..."
+                value={wordInput}
+                onChange={(e) => onWordChange(e.target.value)}
+                maxLength={100}
+              />
+              <button
+                type="button"
+                className="yang-confirm-btn"
+                onClick={() => onConfirm(wordInput)}
+                disabled={!wordInput.trim()}
+              >
+                확인
+              </button>
+            </div>
+          ) : (
+            <p className="yang-confirmed-msg">✅ 단어를 확정했어요!</p>
+          )}
+
+          <ul className="yang-confirm-list">
+            {room.players.map((p) => (
+              <li key={p.id} className={p.confirmed ? 'done' : ''}>
+                {p.name} {p.confirmed ? '✅' : '⏳'}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {isHost && (
         <button
           type="button"
           className="btn-start"
           onClick={onBeginPlaying}
-          disabled={!room.allConfirmed}
+          disabled={!room.canStartGame}
         >
           게임 시작!
         </button>
       )}
 
-      {!isHost && !room.allConfirmed && (
+      {!isHost && !room.canStartGame && !isAuto && (
         <p className="yang-wait-host">전원 확정을 기다리는 중...</p>
+      )}
+      {!isHost && isAuto && (
+        <p className="yang-wait-host">방장이 게임을 시작할 때까지 기다려주세요.</p>
       )}
     </div>
   );
@@ -94,6 +164,8 @@ function WordCards({ room }) {
         <span className="yang-word-label">나</span>
         {mineRevealed ? (
           <span className="yang-word-value">{room.myWord}</span>
+        ) : room.myWordLength ? (
+          <span className="yang-word-value hidden">??? ({room.myWordLength}글자)</span>
         ) : (
           <span className="yang-word-value hidden">???</span>
         )}
@@ -229,6 +301,7 @@ export default function GameRoom({
     handleStartGame,
     handleConfirmWord,
     handleBeginPlaying,
+    handleSetAssignSettings,
     handleGiveUp,
     handlePassTurn,
     handleSendQuestion,
@@ -299,6 +372,7 @@ export default function GameRoom({
             onWordChange={setWordInput}
             onConfirm={handleConfirmWord}
             onBeginPlaying={handleBeginPlaying}
+            onSetAssignSettings={handleSetAssignSettings}
             isHost={isHost}
           />
         )}

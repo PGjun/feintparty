@@ -57,6 +57,11 @@ export function createHandlers(ctx) {
       emitGameInput({ type: 'host-begin-playing' });
     },
 
+    handleSetAssignSettings(assignmentMode, wordTopic) {
+      if (!isHost) return;
+      sendAction(ctx, 'set-assign-settings', { assignmentMode, wordTopic });
+    },
+
     handleSelectMode(mode) {
       sendAction(ctx, 'select-mode', { mode });
     },

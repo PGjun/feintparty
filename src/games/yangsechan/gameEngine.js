@@ -1,5 +1,22 @@
-import { TURN_TIME, ANSWER_TIME } from './constants.js';
+import { TURN_TIME, ANSWER_TIME, QUESTIONS_BEFORE_LENGTH_HINT } from './constants.js';
 import { isAnswerCorrect } from './match.js';
+import { WORD_TOPICS, getTopicLabel } from './wordPools.js';
+
+function wordCharLength(word) {
+  return (word ?? '').replace(/\s/g, '').length;
+}
+
+function pickWordsForPlayers(topicId, count) {
+  const pool = WORD_TOPICS[topicId]?.words;
+  if (!pool || pool.length < count) return null;
+
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, count);
+}
 
 function shuffleDerangement(n) {
   if (n <= 1) return null;
@@ -35,6 +52,10 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     lastStandPlayerId: null,
     messages: [],
     timer: null,
+    assignmentMode: 'manual',
+    wordTopic: null,
+    questionCounts: {},
+    letterCountRevealed: false,
   };
 
 
@@ -67,6 +88,10 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       lastStand: state.lastStand,
       lastStandPlayerId: state.lastStandPlayerId,
       messages: state.messages.slice(-50),
+      assignmentMode: state.assignmentMode,
+      wordTopic: state.wordTopic,
+      questionCounts: { ...state.questionCounts },
+      letterCountRevealed: state.letterCountRevealed,
     };
   }
 
@@ -93,6 +118,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     state.timeLeft = TURN_TIME;
     state.lastStand = false;
     state.lastStandPlayerId = null;
+    state.questionCounts = {};
+    state.letterCountRevealed = false;
     state.players.forEach((p) => {
       p.rank = null;
       p.guessed = false;
@@ -102,6 +129,28 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
   function getLastStandPlayer() {
     if (!state.lastStandPlayerId) return null;
     return state.players.find((p) => p.id === state.lastStandPlayerId) ?? null;
+  }
+
+  function recordQuestion(playerId) {
+    state.questionCounts[playerId] = (state.questionCounts[playerId] ?? 0) + 1;
+    maybeRevealLetterCounts();
+  }
+
+  function maybeRevealLetterCounts() {
+    if (state.letterCountRevealed || state.status !== 'playing') return;
+
+    const active = getActivePlayers();
+    if (active.length === 0) return;
+
+    const allAskedEnough = active.every(
+      (p) => (state.questionCounts[p.id] ?? 0) >= QUESTIONS_BEFORE_LENGTH_HINT
+    );
+    if (!allAskedEnough) return;
+
+    state.letterCountRevealed = true;
+    addSystemMessage(
+      `💡 힌트! 참가자가 각각 ${QUESTIONS_BEFORE_LENGTH_HINT}번 질문했어요. 아직 맞추지 못한 단어의 글자 수를 공개합니다.`
+    );
   }
 
   function getStateForPlayer(playerId) {
@@ -159,14 +208,31 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
         isMyTurn && state.turnPhase === 'action' && state.turnMode === null && !state.lastStand,
       canPassTurn: isMyTurn && state.turnPhase === 'freeTalk' && !state.lastStand,
       allConfirmed:
+        state.assignmentMode === 'auto'
+          ? !!state.wordTopic
+          : state.players.length >= 2 &&
+            state.players.every((p) => state.submissions[p.id]?.confirmed),
+      assignmentMode: state.assignmentMode,
+      wordTopic: state.wordTopic,
+      wordTopicLabel: getTopicLabel(state.wordTopic),
+      isHostView: playerId === hostId,
+      canStartGame:
+        playerId === hostId &&
         state.players.length >= 2 &&
-        state.players.every((p) => state.submissions[p.id]?.confirmed),
+        (state.assignmentMode === 'auto'
+          ? !!state.wordTopic
+          : state.players.every((p) => state.submissions[p.id]?.confirmed)),
       myDraftWord: submission?.confirmed ? '' : (submission?.word ?? ''),
       myConfirmed: !!submission?.confirmed,
       messages: state.messages.slice(-50),
       myId: playerId,
       myWord,
       myWordRevealReason,
+      myWordLength:
+        state.letterCountRevealed && !me?.guessed && myAssignedWord
+          ? wordCharLength(myAssignedWord)
+          : null,
+      letterCountRevealed: state.letterCountRevealed,
       othersWords: [],
     };
 
@@ -370,7 +436,21 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
 
   function beginPlaying(onGameStarted) {
     if (state.players.length < 2) return;
-    if (!state.players.every((p) => state.submissions[p.id]?.confirmed)) return;
+
+    if (state.assignmentMode === 'auto') {
+      if (!state.wordTopic) return;
+      const words = pickWordsForPlayers(state.wordTopic, state.players.length);
+      if (!words) {
+        addSystemMessage('주제 단어가 부족해요. 다른 주제를 선택해주세요.');
+        broadcastState();
+        return;
+      }
+      state.players.forEach((p, i) => {
+        state.submissions[p.id] = { word: words[i], confirmed: true };
+      });
+    } else if (!state.players.every((p) => state.submissions[p.id]?.confirmed)) {
+      return;
+    }
 
     const perm = shuffleDerangement(state.players.length);
     if (!perm) return;
@@ -456,6 +536,8 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     startAssigning() {
       clearTimer();
       resetAssigningState();
+      state.assignmentMode = 'manual';
+      state.wordTopic = null;
       state.status = 'assigning';
       addSystemMessage('단어를 정해주세요! 전원 확정 후 게임을 시작할 수 있어요.');
       broadcastState();
@@ -464,7 +546,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
     handleAction(playerId, playerName, action, payload = {}) {
       switch (action) {
         case 'submit-word': {
-          if (state.status !== 'assigning') return;
+          if (state.status !== 'assigning' || state.assignmentMode === 'auto') return;
           const sub = state.submissions[playerId];
           if (sub?.confirmed) return;
           const word = (payload.word ?? '').trim();
@@ -474,11 +556,45 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           break;
         }
         case 'confirm-word': {
-          if (state.status !== 'assigning') return;
+          if (state.status !== 'assigning' || state.assignmentMode === 'auto') return;
           const word = (payload.word ?? state.submissions[playerId]?.word ?? '').trim();
           if (!word) return;
           state.submissions[playerId] = { word, confirmed: true };
           addSystemMessage(`${playerName}님이 단어를 확정했어요.`);
+          broadcastState();
+          break;
+        }
+        case 'set-assign-settings': {
+          if (state.status !== 'assigning' || playerId !== hostId) return;
+
+          const mode = payload.assignmentMode;
+          const prevMode = state.assignmentMode;
+          const prevTopic = state.wordTopic;
+
+          if (mode === 'manual' || mode === 'auto') {
+            state.assignmentMode = mode;
+            if (mode === 'auto') {
+              state.submissions = {};
+            }
+          }
+
+          const topic = payload.wordTopic;
+          if (topic && WORD_TOPICS[topic]) {
+            state.wordTopic = topic;
+          } else if (topic === null) {
+            state.wordTopic = null;
+          }
+
+          if (
+            state.assignmentMode === 'auto' &&
+            state.wordTopic &&
+            (prevMode !== 'auto' || prevTopic !== state.wordTopic)
+          ) {
+            addSystemMessage(`자동 단어 배분 · 주제: ${getTopicLabel(state.wordTopic)}`);
+          } else if (state.assignmentMode === 'manual' && prevMode !== 'manual') {
+            addSystemMessage('직접 단어 입력 모드입니다.');
+          }
+
           broadcastState();
           break;
         }
@@ -495,6 +611,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           state.turnMode = mode;
           if (mode === 'question') {
             addSystemMessage(`${playerName}님이 질문합니다.`);
+            recordQuestion(playerId);
           } else {
             addSystemMessage(`${playerName}님이 정답을 말합니다.`);
             state.answerPending = true;
@@ -517,6 +634,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           if (mode === 'question') {
             state.turnMode = 'question';
             addSystemMessage(`${playerName}님이 질문합니다.`);
+            recordQuestion(playerId);
             state.messages.push({
               type: 'chat',
               name: playerName,
@@ -633,6 +751,7 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
           text: trimmed,
           time: Date.now(),
         });
+        recordQuestion(fromId);
         startFreeTalk(() => advanceTurn());
         return;
       }
@@ -683,6 +802,10 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       state.lastStand = snapshot.lastStand ?? false;
       state.lastStandPlayerId = snapshot.lastStandPlayerId ?? null;
       state.messages = (snapshot.messages ?? []).slice(-50);
+      state.assignmentMode = snapshot.assignmentMode ?? 'manual';
+      state.wordTopic = snapshot.wordTopic ?? null;
+      state.questionCounts = { ...(snapshot.questionCounts ?? {}) };
+      state.letterCountRevealed = snapshot.letterCountRevealed ?? false;
       state.timer = null;
 
       if (state.status === 'playing' && !state.lastStand) {
@@ -713,6 +836,10 @@ export function createGameEngine(hostId, onBroadcast, _onClearCanvas, onGameFini
       }
       if (state.lastStandPlayerId === oldId) {
         state.lastStandPlayerId = newId;
+      }
+      if (state.questionCounts[oldId] != null) {
+        state.questionCounts[newId] = state.questionCounts[oldId];
+        delete state.questionCounts[oldId];
       }
       broadcastState();
     },

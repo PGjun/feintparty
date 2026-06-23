@@ -938,6 +938,68 @@ input:focus {
   line-height: 1.5;
 }
 
+.yang-assign-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yang-mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.yang-mode-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: 2px solid var(--surface2);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.yang-mode-btn.active {
+  border-color: var(--accent);
+  background: rgba(233, 69, 96, 0.12);
+  color: var(--text);
+}
+
+.yang-topic-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yang-topic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yang-topic-btn {
+  padding: 12px 14px;
+  border: 2px solid var(--surface2);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yang-topic-btn.active {
+  border-color: var(--success);
+  background: rgba(100, 255, 218, 0.08);
+}
+
+.yang-assign-guest {
+  padding: 4px 0 8px;
+}
+
 .yang-word-form {
   display: flex;
   gap: 8px;
